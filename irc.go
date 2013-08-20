@@ -41,8 +41,20 @@ var (
 	// 3 arguments
 	ircre       = regexp.MustCompile(`^(?:[:@]([^ ]+)[ ]+)?(?:([^ ]+)[ ]+)([^\r\n]*)[\r\n]{1,2}$`)
 	ircargre    = regexp.MustCompile(`(.*) :(.*)$`)
-	ircprefixre = regexp.MustCompile(`^([_a-zA-Z0-9\[\]\^{}|-]*)(?:!([^@]+)@(.*))?$`)
+	ircprefixre = regexp.MustCompile(`^([^!]*)(?:!([^@]+)@(.*))?$`)
 )
+
+var committpl *template.Template
+var admins = map[string]bool{
+	"melkor":                       true,
+	"sztanpet.users.quakenet.org":  true,
+	"R1CH.users.quakenet.org":      true,
+	"Jim.users.quakenet.org":       true,
+	"Warchamp7.users.quakenet.org": true,
+	"hwd.users.quakenet.org":       true,
+	"paibox.users.quakenet.org":    true,
+}
+var factoids = make(map[string]string)
 
 func (srv *IRC) parse(b string) *Message {
 	matches := ircre.FindStringSubmatch(b)
@@ -75,8 +87,13 @@ func (srv *IRC) parse(b string) *Message {
 	return m
 }
 
-func (srv *IRC) raw(s string) {
-	srv.write <- s + "\r\n"
+func (srv *IRC) raw(s ...string) {
+	var b bytes.Buffer
+	for _, v := range s {
+		b.Write([]byte(v))
+	}
+	b.Write([]byte("\r\n"))
+	srv.write <- b.String()
 }
 
 func (srv *IRC) reader(conn net.Conn) {
@@ -152,8 +169,8 @@ reconnect:
 	go srv.reader(conn)
 	go srv.writer(conn)
 
-	srv.raw("NICK " + srv.nick)
-	srv.raw("USER " + srv.nick + " a a :" + srv.nick)
+	srv.raw("NICK ", srv.nick)
+	srv.raw("USER ", srv.nick, " a a :", srv.nick)
 	ping := time.NewTicker(30 * time.Second)
 	for {
 		select {
@@ -188,9 +205,9 @@ func (srv *IRC) handleMessage(m *Message) {
 	case "433":
 		// nick in use
 		srv.nick = fmt.Sprintf("OBScommits%d", rand.Intn(10))
-		srv.raw("NICK " + srv.nick)
+		srv.raw("NICK ", srv.nick)
 	case "PING":
-		srv.raw("PONG :" + m.Message)
+		srv.raw("PONG :", m.Message)
 	case "PRIVMSG":
 		// handle administering the factoids
 		if len(m.Host) > 0 && admins[m.Host] {
@@ -204,7 +221,7 @@ func (srv *IRC) handleMessage(m *Message) {
 			}
 			factoidkey := m.Message[1:pos]
 			if factoid, ok := factoids[factoidkey]; ok {
-				srv.raw("PRIVMSG " + m.Parameters[0] + " :" + factoid)
+				srv.raw("PRIVMSG ", m.Parameters[0], " :", factoid)
 			}
 		}
 	}
@@ -223,7 +240,7 @@ func (srv *IRC) handleAdminMessage(m *Message) {
 		factoid = s[2]
 	}
 
-	switch command { // the command
+	switch command {
 	case "add":
 		fallthrough
 	case "mod":
@@ -231,10 +248,10 @@ func (srv *IRC) handleAdminMessage(m *Message) {
 			return
 		}
 		factoids[factoidkey] = factoid
-		srv.raw("NOTICE " + m.Nick + " :Added/Modified successfully: " + factoidkey)
+		srv.raw("NOTICE ", m.Nick, " :Added/Modified successfully")
 	case "del":
 		if _, ok := factoids[factoidkey]; ok {
-			srv.raw("NOTICE " + m.Nick + " :Deleted successfully")
+			srv.raw("NOTICE ", m.Nick, " :Deleted successfully")
 		}
 		delete(factoids, factoidkey)
 	default:
@@ -273,14 +290,10 @@ func (srv *IRC) handleCommits(commits []*Commit) {
 	for _, c := range commits {
 		b := bytes.NewBufferString("")
 		committpl.Execute(b, c)
-		srv.raw("PRIVMSG #obsproject :" + b.String())
+		srv.raw("PRIVMSG #obsproject :", b.String())
 		<-t.C
 	}
 }
-
-var committpl *template.Template
-var admins = make(map[string]bool)
-var factoids = make(map[string]string)
 
 func initIRC(addr string) {
 	committpl = template.New("test")
@@ -303,13 +316,6 @@ func initIRC(addr string) {
 		restart: make(chan bool),
 	}
 
-	admins["melkor"] = true
-	admins["sztanpet.users.quakenet.org"] = true
-	admins["R1CH.users.quakenet.org"] = true
-	admins["Jim.users.quakenet.org"] = true
-	admins["Warchamp7.users.quakenet.org"] = true
-	admins["hwd.users.quakenet.org"] = true
-	admins["paibox.users.quakenet.org"] = true
 	srv.loadFactoids()
 	go srv.run()
 }
