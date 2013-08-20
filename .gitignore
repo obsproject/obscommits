@@ -1,0 +1,5 @@
+settings.cfg
+obscommits
+*.sublime-*
+*.pprof
+factoids.dc
