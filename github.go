@@ -1,14 +1,11 @@
 package main
 
 import (
-	//"io/ioutil"
 	"encoding/json"
 	"net/http"
+	"strings"
 )
 
-type GHRepo struct {
-	Name string
-}
 type GHAuthor struct {
 	Username string
 }
@@ -19,8 +16,8 @@ type GHCommit struct {
 	Id      string
 }
 type GHJson struct {
-	Repository GHRepo
-	Commits    []GHCommit
+	Ref     string
+	Commits []GHCommit
 }
 
 type Commit struct {
@@ -45,6 +42,7 @@ func initGithub(addr string, hookpath string) {
 			return
 		}
 
+		pos := strings.LastIndex(data.Ref, "/") + 1
 		commits := make([]*Commit, 0, len(data.Commits))
 		for _, v := range data.Commits {
 			commits = append(commits, &Commit{
@@ -52,7 +50,7 @@ func initGithub(addr string, hookpath string) {
 				Url:     v.Url,
 				Message: v.Message,
 				ID:      v.Id,
-				Branch:  data.Repository.Name,
+				Branch:  data.Ref[pos:],
 			})
 		}
 
