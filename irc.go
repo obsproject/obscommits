@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"net"
 	"regexp"
+	"runtime"
 	"strings"
 	"text/template"
 	"time"
@@ -182,6 +183,7 @@ reconnect:
 				time.Sleep(5 * time.Second)
 				goto reconnect
 			}
+			runtime.GC()
 		case <-srv.restart:
 			P("Reconnecting in 5 seconds")
 			time.Sleep(5 * time.Second)
