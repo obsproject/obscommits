@@ -35,6 +35,8 @@ func initGithub(addr string, hookpath string) {
 			return
 		}
 
+		D("received payload:\n", payload)
+
 		var data GHJson
 		err := json.Unmarshal([]byte(payload), &data)
 		if err != nil {
@@ -52,6 +54,11 @@ func initGithub(addr string, hookpath string) {
 				ID:      v.Id,
 				Branch:  data.Ref[pos:],
 			})
+		}
+
+		l := len(commits)
+		if l > 10 {
+			commits = commits[l-10:]
 		}
 
 		srv.handleCommits(commits)
