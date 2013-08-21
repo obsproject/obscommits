@@ -45,14 +45,20 @@ func initGithub(addr string, hookpath string) {
 		}
 
 		pos := strings.LastIndex(data.Ref, "/") + 1
+		branch := data.Ref[pos:]
 		commits := make([]*Commit, 0, len(data.Commits))
 		for _, v := range data.Commits {
+			firstline := strings.TrimSpace(v.Message)
+			pos = strings.Index(firstline, "\n")
+			if pos > 0 {
+				firstline = strings.TrimSpace(firstline[:pos])
+			}
 			commits = append(commits, &Commit{
 				Author:  v.Author.Username,
 				Url:     v.Url,
-				Message: v.Message,
+				Message: firstline,
 				ID:      v.Id,
-				Branch:  data.Ref[pos:],
+				Branch:  branch,
 			})
 		}
 
