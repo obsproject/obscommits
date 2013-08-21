@@ -223,7 +223,11 @@ func (srv *IRC) handleMessage(m *Message) {
 			}
 			factoidkey := m.Message[1:pos]
 			if factoid, ok := factoids[factoidkey]; ok {
-				srv.raw("PRIVMSG ", m.Parameters[0], " :", factoid)
+				target := m.Parameters[0]
+				if target == srv.nick { // if we are the recipients, its a private message
+					target = m.Nick // so send it back privately too
+				}
+				srv.raw("PRIVMSG ", target, " :", factoid)
 			}
 		}
 	}
