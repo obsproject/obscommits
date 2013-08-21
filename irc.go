@@ -292,6 +292,12 @@ func (srv *IRC) saveFactoids() {
 }
 
 func (srv *IRC) handleCommits(commits []*Commit) {
+
+	l := len(commits)
+	if l > 10 {
+		commits = commits[l-10:]
+	}
+
 	t := time.NewTicker(time.Second)
 	for _, c := range commits {
 		b := bytes.NewBufferString("")

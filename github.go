@@ -56,11 +56,6 @@ func initGithub(addr string, hookpath string) {
 			})
 		}
 
-		l := len(commits)
-		if l > 10 {
-			commits = commits[l-10:]
-		}
-
 		srv.handleCommits(commits)
 	})
 
