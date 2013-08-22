@@ -122,8 +122,8 @@ func (srv *IRC) writer(conn net.Conn) {
 		select {
 		case <-srv.stop:
 			return
-		case b := <-srv.write:
-			if len(b) == 0 || srv.write == nil {
+		case b, ok := <-srv.write:
+			if !ok {
 				return
 			}
 			DP("> ", b)
@@ -172,11 +172,12 @@ reconnect:
 
 	srv.raw("NICK ", srv.nick)
 	srv.raw("USER ", srv.nick, " a a :", srv.nick)
-	ping := time.NewTicker(30 * time.Second)
+	ping := time.NewTimer(30 * time.Second)
 	for {
 		select {
 		case now := <-ping.C:
 			srv.raw(fmt.Sprintf("PING %d", now.UnixNano()))
+			ping.Reset(30 * time.Second)
 			if okayuntil.Before(now) {
 				P("Timed out, reconnecting in 5sec")
 				srv.stop <- true
@@ -189,7 +190,8 @@ reconnect:
 			time.Sleep(5 * time.Second)
 			goto reconnect
 		case b := <-srv.read:
-			okayuntil = time.Now().Add(61 * time.Second)
+			ping.Reset(30 * time.Second)
+			okayuntil = time.Now().Add(31 * time.Second)
 			m := srv.parse(b)
 			srv.handleMessage(m)
 		}
