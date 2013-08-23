@@ -124,6 +124,7 @@ func (srv *IRC) writer(conn net.Conn) {
 			return
 		case b, ok := <-srv.write:
 			if !ok {
+				srv.write = nil
 				return
 			}
 			DP("> ", b)
