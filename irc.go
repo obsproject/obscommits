@@ -131,15 +131,19 @@ func (srv *IRC) writer(conn net.Conn) {
 	if srv.connected {
 		return
 	}
-	defer conn.Close() // so that the reading side gets unblocked
+
+	defer (func() {
+		srv.connected = false
+		conn.Close() // so that the reading side gets unblocked
+	})()
+
 	for {
 		select {
 		case <-srv.stop:
-			srv.connected = false
+
 			return
 		case b, ok := <-srv.write:
 			if !ok {
-				srv.connected = false
 				srv.write = nil
 				return
 			}
@@ -280,6 +284,9 @@ func (srv *IRC) handleAdminMessage(m *Message) {
 			srv.raw("NOTICE ", m.Nick, " :Deleted successfully")
 		}
 		delete(factoids, factoidkey)
+	case "raw":
+		// execute anything received from the private message with the command raw
+		srv.raw(factoidkey, " ", factoid)
 	default:
 		return
 	}
