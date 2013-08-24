@@ -41,7 +41,7 @@ var (
 	// 2 command
 	// 3 arguments
 	ircre       = regexp.MustCompile(`^(?:[:@]([^ ]+)[ ]+)?(?:([^ ]+)[ ]+)([^\r\n]*)[\r\n]{1,2}$`)
-	ircargre    = regexp.MustCompile(`(.*) :(.*)$`)
+	ircargre    = regexp.MustCompile(`(.*?) :(.*)$`)
 	ircprefixre = regexp.MustCompile(`^([^!]*)(?:!([^@]+)@(.*))?$`)
 )
 
@@ -140,7 +140,6 @@ func (srv *IRC) writer(conn net.Conn) {
 	for {
 		select {
 		case <-srv.stop:
-
 			return
 		case b, ok := <-srv.write:
 			if !ok {
