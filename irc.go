@@ -89,12 +89,18 @@ func (srv *IRC) parse(b string) *Message {
 }
 
 func (srv *IRC) raw(s ...string) {
+
+	if srv.write == nil {
+		return
+	}
+
 	var b bytes.Buffer
 	for _, v := range s {
 		b.Write([]byte(v))
 	}
 	b.Write([]byte("\r\n"))
 	srv.write <- b.String()
+
 }
 
 func (srv *IRC) reader(conn net.Conn) {
@@ -180,15 +186,15 @@ reconnect:
 			srv.raw(fmt.Sprintf("PING %d", now.UnixNano()))
 			ping.Reset(30 * time.Second)
 			if okayuntil.Before(now) {
-				P("Timed out, reconnecting in 5sec")
+				P("Timed out, reconnecting in 30sec")
 				srv.stop <- true
-				time.Sleep(5 * time.Second)
+				time.Sleep(30 * time.Second)
 				goto reconnect
 			}
 			runtime.GC()
 		case <-srv.restart:
-			P("Reconnecting in 5 seconds")
-			time.Sleep(5 * time.Second)
+			P("Reconnecting in 30 seconds")
+			time.Sleep(30 * time.Second)
 			goto reconnect
 		case b := <-srv.read:
 			ping.Reset(30 * time.Second)
