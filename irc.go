@@ -105,11 +105,14 @@ func (srv *IRC) raw(s ...string) {
 
 func (srv *IRC) reader(conn net.Conn) {
 	defer (func() {
+		D("deferred readered closing")
 		if srv.write != nil {
+			D("sending restart")
 			srv.restart <- true
 		}
 	})()
 	if srv.connected {
+		D("already connected, reader returning")
 		return
 	}
 	buff := bufio.NewReader(conn)
@@ -129,10 +132,12 @@ func (srv *IRC) reader(conn net.Conn) {
 
 func (srv *IRC) writer(conn net.Conn) {
 	if srv.connected {
+		D("already connected, writer returning")
 		return
 	}
 
 	defer (func() {
+		D("deferred closing writer")
 		srv.connected = false
 		conn.Close() // so that the reading side gets unblocked
 	})()
@@ -140,6 +145,7 @@ func (srv *IRC) writer(conn net.Conn) {
 	for {
 		select {
 		case <-srv.stop:
+			D("stopping")
 			return
 		case b, ok := <-srv.write:
 			if !ok {
@@ -206,7 +212,10 @@ reconnect:
 			}
 			runtime.GC()
 		case <-srv.restart:
-			srv.stop <- true
+			if srv.write != nil {
+				D("sending stop from restart")
+				srv.stop <- true
+			}
 			P("Reconnecting in 30 seconds")
 			time.Sleep(30 * time.Second)
 			goto reconnect
