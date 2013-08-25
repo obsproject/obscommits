@@ -236,6 +236,10 @@ func (srv *IRC) handleMessage(m *Message) {
 			// if we got 005, consider the server successfully connected, so join the channel
 			srv.raw("JOIN #obsproject")
 		}
+	case "NICK":
+		if m.Nick == srv.nick {
+			srv.nick = m.Message
+		}
 	case "433":
 		// nick in use
 		srv.nick = fmt.Sprintf("OBScommits%d", rand.Intn(10))
