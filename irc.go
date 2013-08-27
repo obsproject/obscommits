@@ -197,31 +197,28 @@ reconnect:
 	go srv.writer(conn)
 
 	srv.raw("NICK ", srv.nick)
-	srv.raw("USER ", srv.nick, " a a :", srv.nick)
+	srv.raw("USER ", srv.nick, " x x :https://github.com/sztanpet/obscommits")
 	ping := time.NewTimer(30 * time.Second)
 	for {
 		select {
 		case now := <-ping.C:
 			srv.raw(fmt.Sprintf("PING %d", now.UnixNano()))
 			ping.Reset(30 * time.Second)
-			if okayuntil.Before(now) {
+			if now.After(okayuntil) {
 				P("Timed out, reconnecting in 30sec")
+				ping.Stop()
 				srv.stop <- true
 				time.Sleep(30 * time.Second)
 				goto reconnect
 			}
 			runtime.GC()
 		case <-srv.restart:
-			if srv.write != nil {
-				D("sending stop from restart")
-				srv.stop <- true
-			}
 			P("Reconnecting in 30 seconds")
 			time.Sleep(30 * time.Second)
 			goto reconnect
 		case b := <-srv.read:
 			ping.Reset(30 * time.Second)
-			okayuntil = time.Now().Add(31 * time.Second)
+			okayuntil = time.Now().Add(35 * time.Second)
 			m := srv.parse(b)
 			srv.handleMessage(m)
 		}
