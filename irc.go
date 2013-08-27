@@ -28,7 +28,7 @@ type Message struct {
 type IRC struct {
 	Addr      string
 	nick      string
-	read      chan string
+	ping      chan bool
 	write     chan string
 	stop      chan bool
 	restart   chan bool
@@ -91,6 +91,7 @@ func (srv *IRC) parse(b string) *Message {
 func (srv *IRC) raw(s ...string) {
 
 	if srv.write == nil {
+		D("Tried writing when the write channel was closed")
 		return
 	}
 
@@ -103,50 +104,33 @@ func (srv *IRC) raw(s ...string) {
 
 }
 
-func (srv *IRC) reader(conn net.Conn) {
-	defer (func() {
-		D("deferred readered closing")
-		if srv.write != nil {
-			D("sending restart")
-			srv.restart <- true
-		}
-	})()
-	if srv.connected {
-		D("already connected, reader returning")
-		return
-	}
-	buff := bufio.NewReader(conn)
-	for {
-		line, err := buff.ReadString('\n')
-		if err != nil {
-			P("Read error: ", err)
-			if srv.write != nil {
-				close(srv.write)
-			}
-			return
-		}
-		DP("< ", line)
-		srv.read <- line
-	}
-}
+const (
+	TIMEOUT           = 30 * time.Second
+	RECONNECTDURATION = 30 * time.Second
+)
 
 func (srv *IRC) writer(conn net.Conn) {
-	if srv.connected {
-		D("already connected, writer returning")
-		return
-	}
-
+	var okayuntil time.Time
+	ping := time.NewTimer(TIMEOUT)
 	defer (func() {
-		D("deferred closing writer")
-		srv.connected = false
-		conn.Close() // so that the reading side gets unblocked
+		D("Deferred writer closing, closing connection")
+		ping.Stop()
+		conn.Close()
 	})()
 
 	for {
 		select {
-		case <-srv.stop:
-			D("stopping")
-			return
+		case <-srv.ping:
+			okayuntil = time.Now().Add(TIMEOUT + 5*time.Second)
+			ping.Reset(TIMEOUT)
+		case now := <-ping.C:
+			srv.raw(fmt.Sprintf("PING %d", now.UnixNano()))
+			ping.Reset(TIMEOUT)
+			if now.After(okayuntil) {
+				P("Timed out, reconnecting in 30sec")
+				return
+			}
+			runtime.GC()
 		case b, ok := <-srv.write:
 			if !ok {
 				srv.write = nil
@@ -170,10 +154,10 @@ func (srv *IRC) writer(conn net.Conn) {
 }
 
 func (srv *IRC) run() {
-	srv.read = make(chan string, 256)
-	var okayuntil time.Time
+
 reconnect:
-	srv.write = make(chan string)
+	srv.ping = make(chan bool, 4)
+	srv.write = make(chan string, 1)
 	srv.connected = false
 
 	addr, err := net.ResolveTCPAddr("tcp", srv.Addr)
@@ -193,35 +177,27 @@ reconnect:
 	conn.SetNoDelay(false)
 	conn.SetKeepAlive(true)
 
-	go srv.reader(conn)
 	go srv.writer(conn)
-
 	srv.raw("NICK ", srv.nick)
-	srv.raw("USER ", srv.nick, " x x :https://github.com/sztanpet/obscommits")
-	ping := time.NewTimer(30 * time.Second)
+	srv.raw("USER ", srv.nick, " x x :github.com/sztanpet/obscommits")
+
+	buff := bufio.NewReader(conn)
 	for {
-		select {
-		case now := <-ping.C:
-			srv.raw(fmt.Sprintf("PING %d", now.UnixNano()))
-			ping.Reset(30 * time.Second)
-			if now.After(okayuntil) {
-				P("Timed out, reconnecting in 30sec")
-				ping.Stop()
-				srv.stop <- true
-				time.Sleep(30 * time.Second)
-				goto reconnect
+		line, err := buff.ReadString('\n')
+		if err != nil {
+			P("Read error: ", err)
+			if srv.write != nil {
+				D("Closing write channel")
+				close(srv.write)
 			}
-			runtime.GC()
-		case <-srv.restart:
-			P("Reconnecting in 30 seconds")
-			time.Sleep(30 * time.Second)
+			P("Reconnecting in 30sec")
+			time.Sleep(RECONNECTDURATION)
 			goto reconnect
-		case b := <-srv.read:
-			ping.Reset(30 * time.Second)
-			okayuntil = time.Now().Add(35 * time.Second)
-			m := srv.parse(b)
-			srv.handleMessage(m)
 		}
+		DP("< ", line)
+		srv.ping <- true
+		m := srv.parse(line)
+		srv.handleMessage(m)
 	}
 }
 
