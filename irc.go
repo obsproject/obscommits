@@ -10,6 +10,7 @@ import (
 	"net"
 	"regexp"
 	"runtime"
+	"sort"
 	"strings"
 	"text/template"
 	"time"
@@ -226,16 +227,23 @@ func (srv *IRC) handleMessage(m *Message) {
 		}
 		// handle displaying of factoids
 		if m.Message[0:1] == "!" {
+			target := m.Parameters[0]
+			if target == srv.nick { // if we are the recipients, its a private message
+				target = m.Nick // so send it back privately too
+			}
 			pos := strings.Index(m.Message, " ")
 			if pos < 0 {
 				pos = len(m.Message)
 			}
 			factoidkey := m.Message[1:pos]
-			if factoid, ok := factoids[factoidkey]; ok {
-				target := m.Parameters[0]
-				if target == srv.nick { // if we are the recipients, its a private message
-					target = m.Nick // so send it back privately too
+			if factoidkey == "list" {
+				factoidlist := make([]string, 0, len(factoids))
+				for k, _ := range factoids {
+					factoidlist = append(factoidlist, strings.ToLower(k))
 				}
+				sort.Strings(factoidlist)
+				srv.raw("PRIVMSG ", target, " :", strings.Join(factoidlist, ", "))
+			} else if factoid, ok := factoids[factoidkey]; ok {
 				srv.raw("PRIVMSG ", target, " :", factoid)
 			}
 		}
@@ -308,6 +316,10 @@ func (srv *IRC) handleCommits(commits []*Commit) {
 	l := len(commits)
 	if l > 10 {
 		commits = commits[l-10:]
+	}
+
+	if l != 0 && commits[0].Branch == "stable" {
+		return // we don't care about the stable branch :(
 	}
 
 	t := time.NewTicker(time.Second)
