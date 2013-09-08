@@ -53,6 +53,9 @@ func initGithub(addr string, hookpath string) {
 		pos := strings.LastIndex(data.Ref, "/") + 1
 		branch := data.Ref[pos:]
 		commits := make([]string, 0, len(data.Commits))
+
+		tmpllock.Lock()
+		defer tmpllock.Unlock()
 		for _, v := range data.Commits {
 			firstline := strings.TrimSpace(v.Message)
 			pos = strings.Index(firstline, "\n")

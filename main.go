@@ -68,7 +68,7 @@ func initTemplate() {
 	})
 }
 
-// need to be called with locks held!
+// needs to be called with locks held!
 func saveState() {
 	mb := new(bytes.Buffer)
 	enc := gob.NewEncoder(mb)

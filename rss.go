@@ -23,7 +23,8 @@ func pollRSS() {
 
 		if err := feed.Fetch(rssurl, nil); err != nil {
 			P("RSS fetch error:", err)
-			return
+			<-time.After(5 * time.Minute)
+			continue
 		}
 
 		<-time.After(time.Duration(feed.SecondsTillUpdate() * int64(time.Second)))
