@@ -12,7 +12,6 @@ import (
 	"runtime"
 	"sort"
 	"strings"
-	"text/template"
 	"time"
 )
 
@@ -36,17 +35,21 @@ type IRC struct {
 	connected bool
 }
 
-var srv IRC
+var srv = IRC{
+	nick:    "OBScommits",
+	stop:    make(chan bool),
+	restart: make(chan bool),
+}
+
 var (
 	// 1 prefix
 	// 2 command
 	// 3 arguments
-	ircre       = regexp.MustCompile(`^(?:[:@]([^ ]+)[ ]+)?(?:([^ ]+)[ ]+)([^\r\n]*)[\r\n]{1,2}$`)
+	ircre       = regexp.MustCompile(`^(?:[:@]([^ ]+) +)?(?:([^\r\n ]+) *)([^\r\n]*)[\r\n]{1,2}$`)
 	ircargre    = regexp.MustCompile(`(.*?) :(.*)$`)
 	ircprefixre = regexp.MustCompile(`^([^!]*)(?:!([^@]+)@(.*))?$`)
 )
 
-var committpl *template.Template
 var admins = map[string]bool{
 	"melkor":                       true,
 	"sztanpet.users.quakenet.org":  true,
@@ -73,7 +76,7 @@ func (srv *IRC) parse(b string) *Message {
 	if args != nil {
 		m.Parameters = strings.SplitN(args[1], " ", 15)
 		m.Message = args[2]
-	} else if matches[3][0:1] == ":" {
+	} else if matches[3] != "" && matches[3][0:1] == ":" {
 		m.Message = matches[3][1:]
 	} else {
 		m.Parameters = strings.SplitN(matches[3], " ", 15)
@@ -311,47 +314,28 @@ func (srv *IRC) saveFactoids() {
 	}
 }
 
-func (srv *IRC) handleCommits(commits []*Commit) {
+func (srv *IRC) handleLines(lines []string) {
 
-	l := len(commits)
-	if l > 10 {
-		commits = commits[l-10:]
+	l := len(lines)
+
+	if l == 0 {
+		return
 	}
 
-	if l != 0 && commits[0].Branch == "stable" {
-		return // we don't care about the stable branch :(
+	if l > 10 {
+		lines = lines[l-10:]
 	}
 
 	t := time.NewTicker(time.Second)
-	for _, c := range commits {
-		b := bytes.NewBufferString("")
-		committpl.Execute(b, c)
-		srv.raw("PRIVMSG #obsproject :", b.String())
+	for _, c := range lines {
+		srv.raw("PRIVMSG #obsproject :", c)
 		<-t.C
 	}
+	t.Stop()
 }
 
 func initIRC(addr string) {
-	committpl = template.New("test")
-	committpl.Funcs(template.FuncMap{
-		"truncate": func(s string, l int, endstring string) (ret string) {
-			if len(s) > l {
-				ret = s[0:l-len(endstring)] + endstring
-			} else {
-				ret = s
-			}
-			return
-		},
-	})
-	committpl = template.Must(committpl.Parse(`[{{.Branch}}|{{.Author}}] {{truncate .Message 200 "..."}} https://github.com/jp9000/OBS/commit/{{truncate .ID 7 ""}}`))
-
-	srv = IRC{
-		Addr:    addr,
-		nick:    "OBScommits",
-		stop:    make(chan bool),
-		restart: make(chan bool),
-	}
-
+	srv.Addr = addr
 	srv.loadFactoids()
 	go srv.run()
 }

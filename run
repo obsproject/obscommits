@@ -1,0 +1,2 @@
+#!/bin/bash
+go run -race main.go irc.go github.go debug.go rss.go

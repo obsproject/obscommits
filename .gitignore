@@ -3,3 +3,4 @@ obscommits
 *.sublime-*
 *.pprof
 factoids.dc
+.state.dc
