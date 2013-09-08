@@ -40,14 +40,14 @@ func itemHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
 	statelock.Lock()
 	defer statelock.Unlock()
 
-	if newitems[0].Id == state["lastseenrssid"] {
+	if newitems[0].Id == state["lastseenrssid"] || newitems[0].Id == state["prevtolastseenrssid"] {
 		return
 	}
 
 	var items []string
 	tmpllock.Lock()
 	for _, item := range newitems {
-		if item.Id == state["lastseenrssid"] {
+		if item.Id == state["lastseenrssid"] || item.Id == state["prevtolastseenrssid"] {
 			break
 		}
 
@@ -57,7 +57,10 @@ func itemHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
 	}
 	tmpllock.Unlock()
 
-	srv.handleLines(items)
+	srv.handleLines(items, false)
 	state["lastseenrssid"] = newitems[0].Id
+	if len(newitems) > 1 {
+		state["prevtolastseenrssid"] = newitems[1].Id
+	}
 	saveState()
 }

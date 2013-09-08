@@ -314,7 +314,7 @@ func (srv *IRC) saveFactoids() {
 	}
 }
 
-func (srv *IRC) handleLines(lines []string) {
+func (srv *IRC) handleLines(lines []string, showlast bool) {
 
 	l := len(lines)
 
@@ -322,8 +322,12 @@ func (srv *IRC) handleLines(lines []string) {
 		return
 	}
 
-	if l > 10 {
-		lines = lines[l-10:]
+	if l > 5 {
+		if showlast {
+			lines = lines[l-5:]
+		} else {
+			lines = lines[:5]
+		}
 	}
 
 	t := time.NewTicker(time.Second)

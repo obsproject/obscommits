@@ -78,7 +78,7 @@ func initGithub(addr string, hookpath string) {
 			commits = append(commits, b.String())
 		}
 
-		srv.handleLines(commits)
+		srv.handleLines(commits, true)
 	})
 
 	if err := http.ListenAndServe(addr, nil); err != nil {
