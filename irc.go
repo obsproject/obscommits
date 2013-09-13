@@ -58,6 +58,7 @@ var admins = map[string]bool{
 	"Warchamp7.users.quakenet.org": true,
 	"hwd.users.quakenet.org":       true,
 	"paibox.users.quakenet.org":    true,
+	"ThoNohT.users.quakenet.org":   true,
 }
 var factoids = make(map[string]string)
 
