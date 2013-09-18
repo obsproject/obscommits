@@ -11,7 +11,7 @@ const rssurl = "http://obsproject.com/forum/feed.php?mode=topics"
 
 func initRSS() {
 	tmpllock.Lock()
-	tmpl = template.Must(tmpl.Parse(`{{define "rss"}}[Forum|{{.Author.Name}}] {{truncate .Title 150 "..."}} {{$l := index .Links 0}}{{$l.Href}}{{end}}`))
+	tmpl = template.Must(tmpl.Parse(`{{define "rss"}}[Forum|{{.Author.Name}}] {{truncate .Title 150 "..." | unescape}} {{$l := index .Links 0}}{{$l.Href}}{{end}}`))
 	tmpllock.Unlock()
 	go pollRSS()
 }

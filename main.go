@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	conf "github.com/msbranco/goconfig"
+	"html"
 	"io/ioutil"
 	"strings"
 	"sync"
@@ -64,7 +65,8 @@ func initTemplate() {
 			}
 			return
 		},
-		"trim": strings.TrimSpace,
+		"trim":     strings.TrimSpace,
+		"unescape": html.UnescapeString,
 	})
 }
 
