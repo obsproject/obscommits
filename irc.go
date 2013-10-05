@@ -48,6 +48,7 @@ var (
 	ircre       = regexp.MustCompile(`^(?:[:@]([^ ]+) +)?(?:([^\r\n ]+) *)([^\r\n]*)[\r\n]{1,2}$`)
 	ircargre    = regexp.MustCompile(`(.*?) :(.*)$`)
 	ircprefixre = regexp.MustCompile(`^([^!]*)(?:!([^@]+)@(.*))?$`)
+	isalpha     = regexp.MustCompile(`^[a-zA-Z0-9-.]+$`)
 )
 
 var admins = map[string]bool{
@@ -247,7 +248,7 @@ func (srv *IRC) handleMessage(m *Message) {
 				}
 				sort.Strings(factoidlist)
 				srv.raw("PRIVMSG ", target, " :", strings.Join(factoidlist, ", "))
-			} else if factoid, ok := factoids[factoidkey]; ok {
+			} else if factoid, ok := factoids[factoidkey]; ok && isalpha.MatchString(factoidkey) {
 				srv.raw("PRIVMSG ", target, " :", factoid)
 			}
 		}
@@ -255,8 +256,13 @@ func (srv *IRC) handleMessage(m *Message) {
 }
 
 func (srv *IRC) handleAdminMessage(m *Message) {
-	s := strings.SplitN(m.Message, " ", 3)
-	if len(s) < 2 {
+
+	if m.Message[0:1] != "." {
+		return
+	}
+
+	s := strings.SplitN(m.Message[1:], " ", 3)
+	if len(s) < 2 || !isalpha.MatchString(s[1]) {
 		return
 	}
 

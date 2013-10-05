@@ -17,9 +17,14 @@ type GHCommit struct {
 	Message string
 	Id      string
 }
+type GHRepo struct {
+	Name string
+	Url  string
+}
 type GHJson struct {
-	Ref     string
-	Commits []GHCommit
+	Ref        string
+	Commits    []GHCommit
+	Repository GHRepo
 }
 
 type Commit struct {
@@ -27,12 +32,14 @@ type Commit struct {
 	Url     string // commits[0].url
 	Message string // commits[0].message
 	ID      string // commits[0].id
-	Branch  string // repository.name
+	Repo    string // repository.name
+	Repourl string // repository.url
+	Branch  string // .ref the part after refs/heads/
 }
 
 func initGithub(addr string, hookpath string) {
 	tmpllock.Lock()
-	tmpl = template.Must(tmpl.Parse(`{{define "git"}}[{{.Branch}}|{{.Author}}] {{truncate .Message 200 "..."}} https://github.com/jp9000/OBS/commit/{{truncate .ID 7 ""}}{{end}}`))
+	tmpl = template.Must(tmpl.Parse(`{{define "git"}}[{{.Repo}}|{{.Author}}] {{truncate .Message 200 "..."}} {{.Repourl}}/commit/{{truncate .ID 7 ""}}{{end}}`))
 	tmpllock.Unlock()
 
 	http.HandleFunc(hookpath, func(w http.ResponseWriter, r *http.Request) {
@@ -53,6 +60,8 @@ func initGithub(addr string, hookpath string) {
 		pos := strings.LastIndex(data.Ref, "/") + 1
 		branch := data.Ref[pos:]
 		commits := make([]string, 0, len(data.Commits))
+		repo := data.Repository.Name
+		repourl := data.Repository.Url
 
 		tmpllock.Lock()
 		defer tmpllock.Unlock()
@@ -63,8 +72,8 @@ func initGithub(addr string, hookpath string) {
 				firstline = strings.TrimSpace(firstline[:pos])
 			}
 
-			if branch == "stable" {
-				continue // we don't care about the stable branch :(
+			if branch != "master" {
+				continue // we don't care about anything but the master branch :(
 			}
 
 			b := bytes.NewBufferString("")
@@ -73,12 +82,14 @@ func initGithub(addr string, hookpath string) {
 				Url:     v.Url,
 				Message: firstline,
 				ID:      v.Id,
+				Repo:    repo,
+				Repourl: repourl,
 				Branch:  branch,
 			})
 			commits = append(commits, b.String())
 		}
 
-		srv.handleLines(commits, true)
+		go srv.handleLines(commits, true)
 	})
 
 	if err := http.ListenAndServe(addr, nil); err != nil {
