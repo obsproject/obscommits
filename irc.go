@@ -3,9 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"encoding/gob"
 	"fmt"
-	"io/ioutil"
 	"math/rand"
 	"net"
 	"regexp"
@@ -61,7 +59,6 @@ var admins = map[string]bool{
 	"paibox.users.quakenet.org":    true,
 	"ThoNohT.users.quakenet.org":   true,
 }
-var factoids = make(map[string]string)
 
 func (srv *IRC) parse(b string) *Message {
 	matches := ircre.FindStringSubmatch(b)
@@ -241,14 +238,16 @@ func (srv *IRC) handleMessage(m *Message) {
 				pos = len(m.Message)
 			}
 			factoidkey := m.Message[1:pos]
+			statelock.Lock()
+			defer statelock.Unlock()
 			if factoidkey == "list" {
-				factoidlist := make([]string, 0, len(factoids))
-				for k, _ := range factoids {
+				factoidlist := make([]string, 0, len(state.Factoids))
+				for k, _ := range state.Factoids {
 					factoidlist = append(factoidlist, strings.ToLower(k))
 				}
 				sort.Strings(factoidlist)
 				srv.raw("PRIVMSG ", target, " :", strings.Join(factoidlist, ", "))
-			} else if factoid, ok := factoids[factoidkey]; ok && isalpha.MatchString(factoidkey) {
+			} else if factoid, ok := state.Factoids[factoidkey]; ok && isalpha.MatchString(factoidkey) {
 				srv.raw("PRIVMSG ", target, " :", factoid)
 			}
 		}
@@ -266,6 +265,9 @@ func (srv *IRC) handleAdminMessage(m *Message) {
 		return
 	}
 
+	statelock.Lock()
+	defer statelock.Unlock()
+	var factoidModified bool
 	command := s[0]
 	factoidkey := s[1]
 	var factoid string
@@ -280,13 +282,15 @@ func (srv *IRC) handleAdminMessage(m *Message) {
 		if len(s) != 3 {
 			return
 		}
-		factoids[factoidkey] = factoid
+		state.Factoids[factoidkey] = factoid
+		factoidModified = true
 		srv.raw("NOTICE ", m.Nick, " :Added/Modified successfully")
 	case "del":
-		if _, ok := factoids[factoidkey]; ok {
+		if _, ok := state.Factoids[factoidkey]; ok {
 			srv.raw("NOTICE ", m.Nick, " :Deleted successfully")
 		}
-		delete(factoids, factoidkey)
+		delete(state.Factoids, factoidkey)
+		factoidModified = true
 	case "raw":
 		// execute anything received from the private message with the command raw
 		srv.raw(factoidkey, " ", factoid)
@@ -294,35 +298,12 @@ func (srv *IRC) handleAdminMessage(m *Message) {
 		return
 	}
 
-	srv.saveFactoids()
-}
-
-func (srv *IRC) loadFactoids() {
-	n, err := ioutil.ReadFile("factoids.dc")
-	if err != nil {
-		D("Error while reading from factoids file")
-		return
-	}
-	mb := bytes.NewBuffer(n)
-	dec := gob.NewDecoder(mb)
-	err = dec.Decode(&factoids)
-	if err != nil {
-		D("Error decoding factoids file")
-	}
-}
-
-func (srv *IRC) saveFactoids() {
-	mb := new(bytes.Buffer)
-	enc := gob.NewEncoder(mb)
-	enc.Encode(&factoids)
-	err := ioutil.WriteFile("factoids.dc", mb.Bytes(), 0600)
-	if err != nil {
-		D("Error with writing out factoids file:", err)
+	if factoidModified {
+		saveState()
 	}
 }
 
 func (srv *IRC) handleLines(lines []string, showlast bool) {
-
 	l := len(lines)
 
 	if l == 0 {
@@ -347,6 +328,5 @@ func (srv *IRC) handleLines(lines []string, showlast bool) {
 
 func initIRC(addr string) {
 	srv.Addr = addr
-	srv.loadFactoids()
 	go srv.run()
 }

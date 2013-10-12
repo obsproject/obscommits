@@ -11,14 +11,23 @@ import (
 	"text/template"
 )
 
+type sortableInt64 []int64
+
+func (a sortableInt64) Len() int           { return len(a) }
+func (a sortableInt64) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a sortableInt64) Less(i, j int) bool { return a[i] < a[j] }
+
+type State struct {
+	Factoids map[string]string
+	Seenrss  map[string]int64
+}
+
 var debuggingenabled = true
+var state State
 var (
-	state     = make(map[string]string)
+	tmpl      *template.Template
+	tmpllock  = sync.RWMutex{}
 	statelock = sync.RWMutex{}
-)
-var (
-	tmpl     *template.Template
-	tmpllock = sync.RWMutex{}
 )
 
 func main() {
@@ -28,7 +37,10 @@ func main() {
 		nc.AddOption("default", "debug", "false")
 		nc.AddOption("default", "ircserver", "irc.quakenet.org:6667")
 		nc.AddOption("default", "listenaddress", ":9998")
-		nc.AddOption("default", "githubhookpath", "/whatever")
+		nc.AddSection("git")
+		nc.AddOption("git", "hookpath", "/whatever")
+		nc.AddSection("rss")
+		nc.AddOption("rss", "url", "https://obsproject.com/forum/feed.php?mode=topics")
 
 		if err := nc.WriteConfigFile("settings.cfg", 0644, "OBScommits settings file"); err != nil {
 			F("Unable to create settings.cfg: ", err)
@@ -41,7 +53,8 @@ func main() {
 	debuggingenabled, _ = c.GetBool("default", "debug")
 	ircaddr, _ := c.GetString("default", "ircserver")
 	listenaddr, _ := c.GetString("default", "listenaddress")
-	hookpath, _ := c.GetString("default", "githubhookpath")
+	hookpath, _ := c.GetString("git", "hookpath")
+	rssurl, _ = c.GetString("rss", "url")
 
 	loadState()
 	initTemplate()
@@ -72,10 +85,13 @@ func initTemplate() {
 
 // needs to be called with locks held!
 func saveState() {
-	mb := new(bytes.Buffer)
-	enc := gob.NewEncoder(mb)
-	enc.Encode(&state)
-	err := ioutil.WriteFile(".state.dc", mb.Bytes(), 0600)
+	buff := new(bytes.Buffer)
+	enc := gob.NewEncoder(buff)
+	err := enc.Encode(state)
+	if err != nil {
+		D("Error encoding state:", err)
+	}
+	err = ioutil.WriteFile(".state.dc", buff.Bytes(), 0600)
 	if err != nil {
 		D("Error with writing out state file:", err)
 	}
@@ -85,15 +101,17 @@ func loadState() {
 	statelock.Lock()
 	defer statelock.Unlock()
 
-	n, err := ioutil.ReadFile(".state.dc")
+	contents, err := ioutil.ReadFile(".state.dc")
 	if err != nil {
 		D("Error while reading from state file")
 		return
 	}
-	mb := bytes.NewBuffer(n)
-	dec := gob.NewDecoder(mb)
+	buff := bytes.NewBuffer(contents)
+	dec := gob.NewDecoder(buff)
 	err = dec.Decode(&state)
 	if err != nil {
-		D("Error decoding state file", err)
+		D("Error decoding state, initializing", err)
+		state.Factoids = make(map[string]string)
+		state.Seenrss = make(map[string]int64)
 	}
 }
