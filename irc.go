@@ -250,6 +250,8 @@ func (srv *IRC) handleMessage(m *Message) {
 			} else if factoid, ok := state.Factoids[factoidkey]; ok && isalpha.MatchString(factoidkey) {
 				srv.raw("PRIVMSG ", target, " :", factoid)
 			}
+		} else {
+			tryHandleAnalyzer(m)
 		}
 	}
 }
