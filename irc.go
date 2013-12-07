@@ -58,6 +58,7 @@ var admins = map[string]bool{
 	"hwd.users.quakenet.org":       true,
 	"paibox.users.quakenet.org":    true,
 	"ThoNohT.users.quakenet.org":   true,
+	"dodgepong.users.quakenet.org": true,
 }
 
 func (srv *IRC) parse(b string) *Message {
