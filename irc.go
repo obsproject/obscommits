@@ -49,19 +49,6 @@ var (
 	isalpha     = regexp.MustCompile(`^[a-zA-Z0-9-.]+$`)
 )
 
-var admins = map[string]bool{
-	"melkor":                       true,
-	"sztanpet.users.quakenet.org":  true,
-	"R1CH.users.quakenet.org":      true,
-	"Jim.users.quakenet.org":       true,
-	"Warchamp7.users.quakenet.org": true,
-	"hwd.users.quakenet.org":       true,
-	"paibox.users.quakenet.org":    true,
-	"ThoNohT.users.quakenet.org":   true,
-	"dodgepong.users.quakenet.org": true,
-	"Sapiens.users.quakenet.org":   true,
-}
-
 func (srv *IRC) parse(b string) *Message {
 	matches := ircre.FindStringSubmatch(b)
 	if matches == nil {
@@ -225,8 +212,16 @@ func (srv *IRC) handleMessage(m *Message) {
 	case "PING":
 		srv.raw("PONG :", m.Message)
 	case "PRIVMSG":
+
+		var isadmin bool
+		if len(m.Host) > 0 {
+			statelock.Lock()
+			isadmin = state.Admins[m.Host]
+			statelock.Unlock()
+		}
+
 		// handle administering the factoids
-		if len(m.Host) > 0 && admins[m.Host] {
+		if isadmin {
 			srv.handleAdminMessage(m)
 		}
 		// handle displaying of factoids
@@ -280,6 +275,15 @@ func (srv *IRC) handleAdminMessage(m *Message) {
 	}
 
 	switch command {
+	case "addadmin":
+		// first argument is the host to match
+		state.Admins[s[1]] = true
+		srv.raw("NOTICE ", m.Nick, " :Added host successfully")
+		factoidModified = true
+	case "deladmin":
+		delete(state.Admins, s[1])
+		srv.raw("NOTICE ", m.Nick, " :Removed host successfully")
+		factoidModified = true
 	case "add":
 		fallthrough
 	case "mod":

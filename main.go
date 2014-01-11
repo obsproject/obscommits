@@ -20,6 +20,7 @@ func (a sortableInt64) Less(i, j int) bool { return a[i] < a[j] }
 type State struct {
 	Factoids map[string]string
 	Seenrss  map[string]int64
+	Admins   map[string]bool
 }
 
 var debuggingenabled = true
@@ -113,5 +114,20 @@ func loadState() {
 		D("Error decoding state, initializing", err)
 		state.Factoids = make(map[string]string)
 		state.Seenrss = make(map[string]int64)
+	}
+
+	if state.Admins == nil || !state.Admins["melkor"] {
+		state.Admins = map[string]bool{
+			"melkor":                       true,
+			"sztanpet.users.quakenet.org":  true,
+			"R1CH.users.quakenet.org":      true,
+			"Jim.users.quakenet.org":       true,
+			"Warchamp7.users.quakenet.org": true,
+			"hwd.users.quakenet.org":       true,
+			"paibox.users.quakenet.org":    true,
+			"ThoNohT.users.quakenet.org":   true,
+			"dodgepong.users.quakenet.org": true,
+			"Sapiens.users.quakenet.org":   true,
+		}
 	}
 }
