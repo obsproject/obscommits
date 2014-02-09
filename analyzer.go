@@ -48,7 +48,7 @@ func tryHandleAnalyzer(m *Message) {
 			}
 		}
 	end:
-		srv.handleLines(lines, false)
+		srv.handleLines(lines, false, false)
 	}()
 }
 

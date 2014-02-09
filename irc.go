@@ -200,6 +200,7 @@ func (srv *IRC) handleMessage(m *Message) {
 			srv.connected = true
 			// if we got 005, consider the server successfully connected, so join the channel
 			srv.raw("JOIN #obsproject")
+			srv.raw("JOIN #obs-dev")
 		}
 	case "NICK":
 		if m.Nick == srv.nick {
@@ -311,7 +312,7 @@ func (srv *IRC) handleAdminMessage(m *Message) {
 	}
 }
 
-func (srv *IRC) handleLines(lines []string, showlast bool) {
+func (srv *IRC) handleLines(lines []string, showlast bool, todevchan bool) {
 	l := len(lines)
 
 	if l == 0 {
@@ -328,7 +329,11 @@ func (srv *IRC) handleLines(lines []string, showlast bool) {
 
 	t := time.NewTicker(time.Second)
 	for _, c := range lines {
-		srv.raw("PRIVMSG #obsproject :", c)
+		if todevchan {
+			srv.raw("PRIVMSG #obs-dev :", c)
+		} else {
+			srv.raw("PRIVMSG #obsproject :", c)
+		}
 		<-t.C
 	}
 	t.Stop()

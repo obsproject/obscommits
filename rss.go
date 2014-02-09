@@ -68,7 +68,7 @@ func itemHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
 	}
 	tmpllock.Unlock()
 
-	go srv.handleLines(items, false)
+	go srv.handleLines(items, false, false)
 
 	if len(state.Seenrss) > 10 { // GC old items, sort them by time, delete all but the first 10
 		rsstimestamps := make(sortableInt64, 0, len(state.Seenrss))
