@@ -10,16 +10,16 @@ import (
 )
 
 var (
-	pastebinre = regexp.MustCompile(`pastebin\.com/[a-zA-Z0-9]+`)
+	loglinkre  = regexp.MustCompile(`pastebin\.com/[a-zA-Z0-9]+|gist\.github\.com/anonymous/[a-f0-9]+`)
 	analyzerre = regexp.MustCompile(`id="analyzer\-summary" data\-major\-issues="(\d+)" data\-minor\-issues="(\d+)">`)
 )
 
 func tryHandleAnalyzer(m *Message) {
-	if !pastebinre.MatchString(m.Message) {
+	if !loglinkre.MatchString(m.Message) {
 		return
 	}
 
-	links := pastebinre.FindAllStringSubmatch(m.Message, 4)
+	links := loglinkre.FindAllStringSubmatch(m.Message, 4)
 	var wg sync.WaitGroup
 	linechan := make(chan string, len(links))
 	query := url.Values{}
