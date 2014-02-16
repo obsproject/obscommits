@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	loglinkre  = regexp.MustCompile(`pastebin\.com/[a-zA-Z0-9]+|gist\.github\.com/anonymous/[a-f0-9]+`)
+	loglinkre  = regexp.MustCompile(`pastebin\.com/[a-zA-Z0-9]+|gist\.github\.com/(?:anonymous/)?([a-f0-9]+)`)
 	analyzerre = regexp.MustCompile(`id="analyzer\-summary" data\-major\-issues="(\d+)" data\-minor\-issues="(\d+)">`)
 )
 
@@ -30,7 +30,11 @@ func tryHandleAnalyzer(m *Message) {
 			continue
 		}
 		seenlinks[v[0]] = true
-		query.Set("url", v[0])
+		if len(v[1]) > 0 {
+			query.Set("url", "gist.github.com/anonymous/"+v[1])
+		} else {
+			query.Set("url", v[0])
+		}
 		url := "http://obsproject.com/analyzer?" + query.Encode()
 		wg.Add(1)
 		go analyzePastebin(url, m.Nick, linechan, &wg)
