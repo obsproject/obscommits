@@ -41,7 +41,7 @@ func main() {
 		nc.AddSection("git")
 		nc.AddOption("git", "hookpath", "/whatever")
 		nc.AddSection("rss")
-		nc.AddOption("rss", "url", "https://obsproject.com/forum/feed.php?mode=topics")
+		nc.AddOption("rss", "url", "https://obsproject.com/forum/list/-/index.rss")
 
 		if err := nc.WriteConfigFile("settings.cfg", 0644, "OBScommits settings file"); err != nil {
 			F("Unable to create settings.cfg: ", err)
@@ -105,14 +105,26 @@ func loadState() {
 	contents, err := ioutil.ReadFile(".state.dc")
 	if err != nil {
 		D("Error while reading from state file")
+		initState()
 		return
 	}
 	buff := bytes.NewBuffer(contents)
 	dec := gob.NewDecoder(buff)
 	err = dec.Decode(&state)
+
 	if err != nil {
 		D("Error decoding state, initializing", err)
+	}
+	initState()
+}
+
+func initState() {
+
+	if state.Factoids == nil {
 		state.Factoids = make(map[string]string)
+	}
+
+	if state.Seenrss == nil {
 		state.Seenrss = make(map[string]int64)
 	}
 
