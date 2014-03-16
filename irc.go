@@ -20,6 +20,7 @@ type IRC struct {
 }
 
 var srv = IRC{}
+var usedfactoids = map[string]time.Time{}
 var (
 	isalpha = regexp.MustCompile(`^[a-zA-Z0-9-.]+$`)
 )
@@ -134,6 +135,9 @@ func (srv *IRC) onMessage(c *irc.Conn, line *irc.Line) {
 		statelock.Lock()
 		defer statelock.Unlock()
 		if factoidkey == "list" {
+			if factoidUsedRecently(factoidkey) {
+				return
+			}
 			factoidlist := make([]string, 0, len(state.Factoids))
 			for k, _ := range state.Factoids {
 				factoidlist = append(factoidlist, strings.ToLower(k))
@@ -141,6 +145,9 @@ func (srv *IRC) onMessage(c *irc.Conn, line *irc.Line) {
 			sort.Strings(factoidlist)
 			srv.raw("PRIVMSG ", target, " :", strings.Join(factoidlist, ", "))
 		} else if factoid, ok := state.Factoids[factoidkey]; ok && isalpha.MatchString(factoidkey) {
+			if factoidUsedRecently(factoidkey) {
+				return
+			}
 			if pos != len(message) { // there was a postfix
 				rest := message[pos+1:]        // skip the space
 				pos = strings.Index(rest, " ") // and search for the next space
@@ -215,4 +222,14 @@ func (srv *IRC) onAdminMessage(line *irc.Line) bool {
 		saveState()
 	}
 	return true
+}
+
+func factoidUsedRecently(factoidkey string) bool {
+	if lastused, ok := usedfactoids[factoidkey]; ok && time.Since(lastused) < 30*time.Second {
+		D("Not handling factoid:", factoidkey, ", because it was used too recently!")
+		usedfactoids[factoidkey] = time.Now()
+		return true
+	}
+	usedfactoids[factoidkey] = time.Now()
+	return false
 }
