@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/md5"
+	"encoding/base64"
 	"encoding/gob"
 	conf "github.com/msbranco/goconfig"
 	"html"
@@ -116,6 +118,15 @@ func loadState() {
 		D("Error decoding state, initializing", err)
 	}
 	initState()
+
+	// migrate the Seenrss keys to their md5 hashed versions
+	for oldkey, value := range state.Seenrss {
+		if len(oldkey) > 24 { // if longer, it needs converting
+			newkey := getHash(oldkey)
+			state.Seenrss[newkey] = value
+			delete(state.Seenrss, oldkey)
+		}
+	}
 }
 
 func initState() {
@@ -142,4 +153,9 @@ func initState() {
 			"Sapiens.users.quakenet.org":   true,
 		}
 	}
+}
+
+func getHash(data string) string {
+	hash := md5.Sum([]byte(data))
+	return base64.StdEncoding.EncodeToString(hash[:])
 }

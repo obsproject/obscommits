@@ -51,17 +51,19 @@ func itemHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
 	statelock.Lock()
 	defer statelock.Unlock()
 
-	if _, ok := state.Seenrss[*newitems[0].Guid]; ok {
+	firsthash := getHash(*newitems[0].Guid)
+	if _, ok := state.Seenrss[firsthash]; ok {
 		return // already seen
 	}
 
 	var items []string
 	tmpllock.Lock()
 	for _, item := range newitems {
-		if _, ok := state.Seenrss[*item.Guid]; ok {
+		hash := getHash(*item.Guid)
+		if _, ok := state.Seenrss[hash]; ok {
 			break
 		}
-		state.Seenrss[*item.Guid] = time.Now().UTC().UnixNano()
+		state.Seenrss[hash] = time.Now().UTC().UnixNano()
 		b := bytes.NewBufferString("")
 		tmpl.ExecuteTemplate(b, "rss", item)
 		items = append(items, b.String())
@@ -70,13 +72,13 @@ func itemHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
 
 	go srv.handleLines(items, false, false)
 
-	if len(state.Seenrss) > 200 { // GC old items, sort them by time, delete all but the first 200
+	if len(state.Seenrss) > 400 { // GC old items, sort them by time, delete all that have the value beyond the last 400
 		rsstimestamps := make(sortableInt64, 0, len(state.Seenrss))
 		for _, ts := range state.Seenrss {
 			rsstimestamps = append(rsstimestamps, ts)
 		}
 		sort.Sort(rsstimestamps)
-		rsstimestamps = rsstimestamps[:len(state.Seenrss)-200]
+		rsstimestamps = rsstimestamps[:len(state.Seenrss)-400]
 		for key, value := range state.Seenrss {
 			for _, ts := range rsstimestamps {
 				if value == ts {
