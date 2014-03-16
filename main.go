@@ -121,15 +121,6 @@ func loadState() {
 		D("Error decoding state, initializing", err)
 	}
 	initState()
-
-	// migrate the Seenrss keys to their md5 hashed versions
-	for oldkey, value := range state.Seenrss {
-		if len(oldkey) > 24 { // if longer, it needs converting
-			newkey := getHash(oldkey)
-			state.Seenrss[newkey] = value
-			delete(state.Seenrss, oldkey)
-		}
-	}
 }
 
 func initState() {
