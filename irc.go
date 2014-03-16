@@ -246,7 +246,16 @@ func (srv *IRC) handleMessage(m *Message) {
 				sort.Strings(factoidlist)
 				srv.raw("PRIVMSG ", target, " :", strings.Join(factoidlist, ", "))
 			} else if factoid, ok := state.Factoids[factoidkey]; ok && isalpha.MatchString(factoidkey) {
-				srv.raw("PRIVMSG ", target, " :", factoid)
+				if pos != len(m.Message) { // there was a postfix
+					rest := m.Message[pos+1:]      // skip the space
+					pos = strings.Index(rest, " ") // and search for the next space
+					if pos > 0 {                   // and only print the first thing delimeted by a space
+						rest = rest[0:pos]
+					}
+					srv.raw("PRIVMSG ", target, " :", rest, ": ", factoid)
+				} else { // otherwise just print the factoid
+					srv.raw("PRIVMSG ", target, " :", factoid)
+				}
 			}
 		} else {
 			tryHandleAnalyzer(m)
