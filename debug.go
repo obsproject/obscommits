@@ -57,3 +57,18 @@ func DP(v ...interface{}) {
 func P(v ...interface{}) {
 	log.Println(v...)
 }
+
+type debugLogger struct{}
+
+func (dl debugLogger) Debug(f string, a ...interface{}) {
+	D(fmt.Sprintf(f, a...))
+}
+func (dl debugLogger) Info(f string, a ...interface{}) {
+	D(fmt.Sprintf(f, a...))
+}
+func (dl debugLogger) Warn(f string, a ...interface{}) {
+	D(fmt.Sprintf(f, a...))
+}
+func (dl debugLogger) Error(f string, a ...interface{}) {
+	D(fmt.Sprintf(f, a...))
+}

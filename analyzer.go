@@ -14,12 +14,12 @@ var (
 	analyzerre = regexp.MustCompile(`id="analyzer\-summary" data\-major\-issues="(\d+)" data\-minor\-issues="(\d+)">`)
 )
 
-func tryHandleAnalyzer(m *Message) {
-	if !loglinkre.MatchString(m.Message) {
+func tryHandleAnalyzer(nick, message string) {
+	if !loglinkre.MatchString(message) {
 		return
 	}
 
-	links := loglinkre.FindAllStringSubmatch(m.Message, 4)
+	links := loglinkre.FindAllStringSubmatch(message, 4)
 	var wg sync.WaitGroup
 	linechan := make(chan string, len(links))
 	query := url.Values{}
@@ -37,7 +37,7 @@ func tryHandleAnalyzer(m *Message) {
 		}
 		url := "http://obsproject.com/analyzer?" + query.Encode()
 		wg.Add(1)
-		go analyzePastebin(url, m.Nick, linechan, &wg)
+		go analyzePastebin(url, nick, linechan, &wg)
 	}
 
 	go func() {

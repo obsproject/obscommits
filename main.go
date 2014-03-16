@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"encoding/base64"
 	"encoding/gob"
+	irclogger "github.com/fluffle/goirc/logging"
 	conf "github.com/msbranco/goconfig"
 	"html"
 	"io/ioutil"
@@ -34,6 +35,7 @@ var (
 )
 
 func main() {
+	irclogger.SetLogger(debugLogger{})
 	c, err := conf.ReadConfigFile("settings.cfg")
 	if err != nil {
 		nc := conf.NewConfigFile()
@@ -62,6 +64,7 @@ func main() {
 	loadState()
 	initTemplate()
 	initIRC(ircaddr)
+
 	initRSS()
 	initGithub(listenaddr, hookpath)
 
