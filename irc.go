@@ -181,10 +181,10 @@ func (srv *IRC) onAdminMessage(line *irc.Line) bool {
 	var factoidModified bool
 	command := s[0]
 	factoidkey := s[1]
-	var factoidkey2 strings
+	var newfactoidkey string
 	var factoid string
 	if len(s) >= 3 {
-		factoidkey2 = s[2]
+		newfactoidkey = s[2]
 		factoid = s[2]
 	}
 
@@ -218,12 +218,15 @@ func (srv *IRC) onAdminMessage(line *irc.Line) bool {
 		delete(state.Factoids, factoidkey)
 		factoidModified = true
 	case "rename":
-		if _, ok := state.Factoids[factoidkey2]; ok {
+		if !isalpha.MatchString(newfactoidkey) {
+			return true
+		}
+		if _, ok := state.Factoids[newfactoidkey]; ok {
 			srv.raw("NOTICE ", line.Nick, " :Renaming would overwrite, please delete first")
 			return true
 		}
 		if _, ok := state.Factoids[factoidkey]; ok {
-			state.Factoids[factoidkey2] = state.Factoids[factoidkey]
+			state.Factoids[newfactoidkey] = state.Factoids[factoidkey]
 			delete(state.Factoids, factoidkey)
 			factoidModified = true
 			srv.raw("NOTICE ", line.Nick, " :Renamed successfully")
