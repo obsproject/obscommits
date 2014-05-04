@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	_ "crypto/sha512"
 	"crypto/tls"
 	rss "github.com/jteeuwen/go-pkg-rss"
 	"net/http"
