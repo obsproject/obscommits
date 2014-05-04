@@ -205,7 +205,7 @@ func (srv *IRC) onAdminMessage(line *irc.Line) bool {
 	case "add":
 		fallthrough
 	case "mod":
-		if len(s) != 3 {
+		if len(s) < 3 {
 			return true
 		}
 		state.Factoids[factoidkey] = factoid
