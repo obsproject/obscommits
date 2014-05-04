@@ -171,7 +171,7 @@ func (srv *IRC) onAdminMessage(line *irc.Line) bool {
 		return false
 	}
 
-	s := strings.SplitN(message[1:], " ", 3)
+	s := strings.SplitN(message[1:], " ", 4)
 	if len(s) < 2 || !isalpha.MatchString(s[1]) {
 		return false
 	}
@@ -181,9 +181,15 @@ func (srv *IRC) onAdminMessage(line *irc.Line) bool {
 	var factoidModified bool
 	command := s[0]
 	factoidkey := s[1]
+	var factoidkey2 strings
 	var factoid string
-	if len(s) == 3 {
+	if len(s) >= 3 {
+		factoidkey2 = s[2]
 		factoid = s[2]
+	}
+
+	if len(s) == 4 {
+		factoid = s[2] + " " + s[3]
 	}
 
 	switch command {
@@ -211,6 +217,19 @@ func (srv *IRC) onAdminMessage(line *irc.Line) bool {
 		}
 		delete(state.Factoids, factoidkey)
 		factoidModified = true
+	case "rename":
+		if _, ok := state.Factoids[factoidkey2]; ok {
+			srv.raw("NOTICE ", line.Nick, " :Renaming would overwrite, please delete first")
+			return true
+		}
+		if _, ok := state.Factoids[factoidkey]; ok {
+			state.Factoids[factoidkey2] = state.Factoids[factoidkey]
+			delete(state.Factoids, factoidkey)
+			factoidModified = true
+			srv.raw("NOTICE ", line.Nick, " :Renamed successfully")
+		} else {
+			srv.raw("NOTICE ", line.Nick, " :Not present")
+		}
 	case "raw":
 		// execute anything received from the private message with the command raw
 		srv.raw(factoidkey, " ", factoid)
