@@ -131,7 +131,7 @@ func (srv *IRC) onMessage(c *irc.Conn, line *irc.Line) {
 		if pos < 0 {
 			pos = len(message)
 		}
-		factoidkey := message[1:pos]
+		factoidkey := strings.ToLower(message[1:pos])
 		statelock.Lock()
 		defer statelock.Unlock()
 		if factoidkey == "list" {
@@ -180,11 +180,11 @@ func (srv *IRC) onAdminMessage(line *irc.Line) bool {
 	defer statelock.Unlock()
 	var factoidModified bool
 	command := s[0]
-	factoidkey := s[1]
+	factoidkey := strings.ToLower(s[1])
 	var newfactoidkey string
 	var factoid string
 	if len(s) >= 3 {
-		newfactoidkey = s[2]
+		newfactoidkey = strings.ToLower(s[2])
 		factoid = s[2]
 	}
 
