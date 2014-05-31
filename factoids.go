@@ -104,17 +104,7 @@ func tryHandleFactoid(target, message string) (abort bool) {
 	}
 	statelock.Lock()
 	defer statelock.Unlock()
-	if factoidkey == "list" {
-		if factoidUsedRecently(factoidkey) {
-			return
-		}
-		factoidlist := make([]string, 0, len(state.Factoids))
-		for k, _ := range state.Factoids {
-			factoidlist = append(factoidlist, strings.ToLower(k))
-		}
-		sort.Strings(factoidlist)
-		srv.privmsg(target, strings.Join(factoidlist, ", "))
-	} else if factoid, factoidkey, ok := getFactoidByKey(factoidkey); ok {
+	if factoid, factoidkey, ok := getFactoidByKey(factoidkey); ok {
 		if factoidUsedRecently(factoidkey) {
 			return
 		}
