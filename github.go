@@ -37,7 +37,7 @@ type Commit struct {
 	Branch  string // .ref the part after refs/heads/
 }
 
-func initGithub(addr string, hookpath string) {
+func initGithub(hookpath string) {
 	tmpllock.Lock()
 	tmpl = template.Must(tmpl.Parse(`{{define "git"}}[{{.Repo}}|{{.Author}}] {{truncate .Message 200 "..."}} {{.Repourl}}/commit/{{truncate .ID 7 ""}}{{end}}`))
 	tmpllock.Unlock()
@@ -92,9 +92,6 @@ func initGithub(addr string, hookpath string) {
 		go srv.handleLines("#obs-dev", commits, true)
 	})
 
-	if err := http.ListenAndServe(addr, nil); err != nil {
-		F("ListenAndServe:", err)
-	}
 }
 
 /*

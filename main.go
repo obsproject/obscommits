@@ -9,6 +9,7 @@ import (
 	conf "github.com/msbranco/goconfig"
 	"html"
 	"io/ioutil"
+	"net/http"
 	"strings"
 	"sync"
 	"text/template"
@@ -49,6 +50,8 @@ func main() {
 		nc.AddSection("rss")
 		nc.AddOption("rss", "url", "https://obsproject.com/forum/list/-/index.rss")
 		nc.AddOption("rss", "githubnewsurl", "dunce://need.to.set.it")
+		nc.AddSection("factoids")
+		nc.AddOption("factoids", "hookpath", "/factoids")
 
 		if err := nc.WriteConfigFile("settings.cfg", 0644, "OBScommits settings file"); err != nil {
 			F("Unable to create settings.cfg: ", err)
@@ -61,7 +64,8 @@ func main() {
 	debuggingenabled, _ = c.GetBool("default", "debug")
 	ircaddr, _ := c.GetString("default", "ircserver")
 	listenaddr, _ := c.GetString("default", "listenaddress")
-	hookpath, _ := c.GetString("git", "hookpath")
+	githookpath, _ := c.GetString("git", "hookpath")
+	factoidhookpath, _ := c.GetString("factoids", "hookpath")
 	rssurl, _ = c.GetString("rss", "url")
 	githubnewsurl, err = c.GetString("rss", "githubnewsurl")
 
@@ -70,8 +74,12 @@ func main() {
 	initIRC(ircaddr)
 
 	initRSS()
-	initGithub(listenaddr, hookpath)
+	initFactoids(factoidhookpath)
+	initGithub(githookpath)
 
+	if err := http.ListenAndServe(listenaddr, nil); err != nil {
+		F("ListenAndServe:", err)
+	}
 }
 
 func initTemplate() {

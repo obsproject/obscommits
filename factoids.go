@@ -1,12 +1,67 @@
 package main
 
 import (
+	"html/template"
+	"net/http"
 	"sort"
 	"strings"
 	"time"
 )
 
 var usedfactoids = map[string]time.Time{}
+
+type Factoid struct {
+	Name    string
+	Text    string
+	Aliases []string
+}
+
+type Factoids []*Factoid
+
+func (f Factoids) Len() int           { return len(f) }
+func (f Factoids) Less(i, j int) bool { return f[i].Name < f[j].Name }
+func (f Factoids) Swap(i, j int)      { f[i], f[j] = f[j], f[i] }
+
+func initFactoids(hookpath string) {
+	http.HandleFunc(hookpath, handleFactoidRequest)
+}
+
+func handleFactoidRequest(w http.ResponseWriter, r *http.Request) {
+	t, _ := template.ParseFiles("factoid.tpl")
+	t.Funcs(template.FuncMap{
+		"linkify": func(s string) (ret string) {
+			// TODO
+			return s
+		},
+	})
+	t.Execute(w, getFactoids())
+}
+
+func getFactoids() []*Factoid {
+	statelock.RLock()
+	defer statelock.RUnlock()
+
+	aliases := make(map[string][]string)
+	for alias, factoid := range state.Factoidaliases {
+		aliases[factoid] = append(aliases[factoid], alias)
+	}
+
+	for _, a := range aliases {
+		sort.Strings(a)
+	}
+
+	factoids := make([]*Factoid, 0, len(state.Factoids))
+	for name, text := range state.Factoids {
+		factoids = append(factoids, &Factoid{
+			Name:    name,
+			Text:    text,
+			Aliases: aliases[name],
+		})
+	}
+
+	sort.Sort(Factoids(factoids))
+	return factoids
+}
 
 func factoidUsedRecently(factoidkey string) bool {
 	if lastused, ok := usedfactoids[factoidkey]; ok && time.Since(lastused) < 30*time.Second {
