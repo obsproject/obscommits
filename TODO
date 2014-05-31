@@ -5,6 +5,9 @@
  ✔ analyzer private message support @done (14-05-31 14:25)
  ✔ factoid alias support @done (14-05-31 14:25)
  ✔ github events rss support @done (14-05-31 15:07)
+ ✔ webpage for the factoids @done (14-06-01 01:19)
+   ☐ linkify the links in the factoids
+   ☐ handle the IRC control codes and bold/color the text appropriately
 
 later:
  ☐ handle polling git repos with a local tracking branch
