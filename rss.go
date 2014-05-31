@@ -5,13 +5,18 @@ import (
 	_ "crypto/sha512"
 	"crypto/tls"
 	rss "github.com/jteeuwen/go-pkg-rss"
+	"io/ioutil"
 	"net/http"
+	"regexp"
 	"sort"
 	"text/template"
 	"time"
 )
 
 var rssurl string
+var (
+	messagecount = regexp.MustCompile(`<li id="post\-\d+" class="sectionMain message`)
+)
 
 func initRSS() {
 	tmpllock.Lock()
@@ -43,6 +48,40 @@ func pollRSS() {
 	}
 }
 
+func checkIfThreadHasSingleMessage(link string) bool {
+	hassinglemessage := make(chan bool)
+
+	go (func() {
+		resp, err := http.Get(link)
+		ret := true
+		defer (func() {
+			hassinglemessage <- ret
+		})()
+
+		if err != nil {
+			D("Could not get link", link, err)
+			return
+		}
+
+		defer resp.Body.Close()
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			D("Error reading from the body of the link", link, err)
+			return
+		}
+
+		count := messagecount.FindAllIndex(body, 2)
+		if len(count) == 0 {
+			D("Did not find the messagecount regex in the link", link)
+		} else if len(count) > 1 {
+			ret = false
+		}
+
+	})()
+
+	return <-hassinglemessage
+}
+
 func itemHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
 
 	if len(newitems) == 0 {
@@ -52,19 +91,20 @@ func itemHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
 	statelock.Lock()
 	defer statelock.Unlock()
 
-	firsthash := getHash(*newitems[0].Guid)
-	if _, ok := state.Seenrss[firsthash]; ok {
-		return // already seen
-	}
-
 	var items []string
 	tmpllock.Lock()
 	for _, item := range newitems {
 		hash := getHash(*item.Guid)
 		if _, ok := state.Seenrss[hash]; ok {
-			break
+			continue
 		}
 		state.Seenrss[hash] = time.Now().UTC().UnixNano()
+		// we check after marking the thread as seen because regardless of the fact
+		// that the check fails, we do not want to check it again
+		if !checkIfThreadHasSingleMessage(*item.Guid) {
+			continue
+		}
+
 		b := bytes.NewBufferString("")
 		tmpl.ExecuteTemplate(b, "rss", item)
 		items = append(items, b.String())
