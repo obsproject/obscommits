@@ -19,7 +19,6 @@ type IRC struct {
 }
 
 var srv = IRC{}
-var usedfactoids = map[string]time.Time{}
 var (
 	isalpha = regexp.MustCompile(`^[a-zA-Z0-9-.]+$`)
 )
@@ -93,6 +92,7 @@ func (srv *IRC) Init(addr string) {
 	cfg.Me.Name = "github.com/sztanpet/obscommits"
 	cfg.Server = addr
 	cfg.NewNick = srv.NewNick
+	cfg.SplitLen = 430
 	srv.Addr = addr
 	c := irc.Client(cfg)
 	c.EnableStateTracking()
@@ -202,14 +202,4 @@ func (srv *IRC) onAdminMessage(target, nick, message string) (abort bool) {
 	}
 
 	return
-}
-
-func factoidUsedRecently(factoidkey string) bool {
-	if lastused, ok := usedfactoids[factoidkey]; ok && time.Since(lastused) < 30*time.Second {
-		D("Not handling factoid:", factoidkey, ", because it was used too recently!")
-		usedfactoids[factoidkey] = time.Now()
-		return true
-	}
-	usedfactoids[factoidkey] = time.Now()
-	return false
 }

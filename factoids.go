@@ -3,7 +3,20 @@ package main
 import (
 	"sort"
 	"strings"
+	"time"
 )
+
+var usedfactoids = map[string]time.Time{}
+
+func factoidUsedRecently(factoidkey string) bool {
+	if lastused, ok := usedfactoids[factoidkey]; ok && time.Since(lastused) < 30*time.Second {
+		D("Not handling factoid:", factoidkey, ", because it was used too recently!")
+		usedfactoids[factoidkey] = time.Now()
+		return true
+	}
+	usedfactoids[factoidkey] = time.Now()
+	return false
+}
 
 // checks if there is a factoid, if there isnt tries to look if its an alias
 // and then recurses with the found factoid
