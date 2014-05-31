@@ -14,15 +14,43 @@ import (
 )
 
 var rssurl string
+var githubnewsurl string
 var (
-	messagecount = regexp.MustCompile(`<li id="post\-\d+" class="sectionMain message`)
+	messagecountre = regexp.MustCompile(`<li id="post\-\d+" class="sectionMain message`)
+	githubeventsre = regexp.MustCompile(`.* opened (issue|pull request) .*`)
+	githublinkre   = regexp.MustCompile(`.*//github.com/jp9000/.*`)
 )
 
 func initRSS() {
 	tmpllock.Lock()
 	tmpl = template.Must(tmpl.Parse(`{{define "rss"}}[Forum|{{.Author.Name}}] {{truncate .Title 150 "..." | unescape}} {{$l := index .Links 0}}{{$l.Href}}{{end}}`))
+	tmpl = template.Must(tmpl.Parse(`{{define "githubevents"}}[GH] {{.Title | unescape}} {{$l := index .Links 0}}{{$l.Href}}{{end}}`))
 	tmpllock.Unlock()
 	go pollRSS()
+	go pollGitHub()
+}
+
+func pollGitHub() {
+	// 5 second timeout
+	feed := rss.New(5, true, nil, githubRSSHandler)
+	client := http.DefaultClient
+	if len(githubnewsurl) > 8 && githubnewsurl[:8] == "https://" {
+		tr := &http.Transport{
+			TLSClientConfig: &tls.Config{},
+		}
+		client = &http.Client{Transport: tr}
+	}
+
+	for {
+
+		if err := feed.FetchClient(githubnewsurl, client, nil); err != nil {
+			P("RSS fetch error:", err)
+			<-time.After(5 * time.Minute)
+			continue
+		}
+
+		<-time.After(time.Duration(feed.SecondsTillUpdate() * int64(time.Second)))
+	}
 }
 
 func pollRSS() {
@@ -53,7 +81,7 @@ func checkIfThreadHasSingleMessage(link string) bool {
 
 	go (func() {
 		resp, err := http.Get(link)
-		ret := true
+		ret := true // to be safe, we default to true meaning announce the topic
 		defer (func() {
 			hassinglemessage <- ret
 		})()
@@ -70,13 +98,12 @@ func checkIfThreadHasSingleMessage(link string) bool {
 			return
 		}
 
-		count := messagecount.FindAllIndex(body, 2)
+		count := messagecountre.FindAllIndex(body, 2)
 		if len(count) == 0 {
-			D("Did not find the messagecount regex in the link", link)
+			D("Did not find the messagecountre regex in the link", link)
 		} else if len(count) > 1 {
 			ret = false
 		}
-
 	})()
 
 	return <-hassinglemessage
@@ -124,6 +151,55 @@ func itemHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
 			for _, ts := range rsstimestamps {
 				if value == ts {
 					delete(state.Seenrss, key)
+				}
+			}
+		}
+	}
+
+	saveState()
+}
+
+func githubRSSHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
+
+	if len(newitems) == 0 {
+		return
+	}
+
+	statelock.Lock()
+	defer statelock.Unlock()
+
+	var items []string
+	tmpllock.Lock()
+	for _, item := range newitems {
+		if !githubeventsre.MatchString(item.Title) || !githublinkre.MatchString((*item.Links[0]).Href) {
+			continue
+		}
+
+		hash := getHash(item.Id)
+		if _, ok := state.Seengithubevents[hash]; ok {
+			continue
+		}
+		state.Seengithubevents[hash] = time.Now().UTC().UnixNano()
+
+		b := bytes.NewBufferString("")
+		tmpl.ExecuteTemplate(b, "githubevents", item)
+		items = append(items, b.String())
+	}
+	tmpllock.Unlock()
+
+	go srv.handleLines("#obs-dev", items, false)
+
+	if len(state.Seengithubevents) > 30 {
+		rsstimestamps := make(sortableInt64, 0, len(state.Seengithubevents))
+		for _, ts := range state.Seengithubevents {
+			rsstimestamps = append(rsstimestamps, ts)
+		}
+		sort.Sort(rsstimestamps)
+		rsstimestamps = rsstimestamps[:len(state.Seengithubevents)-30]
+		for key, value := range state.Seengithubevents {
+			for _, ts := range rsstimestamps {
+				if value == ts {
+					delete(state.Seengithubevents, key)
 				}
 			}
 		}

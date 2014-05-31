@@ -2,7 +2,9 @@
  ✔ first just handle the github webhook and show the info from that @done (13-08-20 18:19)
  ✔ handle showing links ala moobotfactoids @done (13-08-20 18:19)
  ✔ announce new threads only from http://obsproject.com/forum/feed.php @done (13-09-15 03:17)
- ☐ analyzer private message support
+ ✔ analyzer private message support @done (14-05-31 14:25)
+ ✔ factoid alias support @done (14-05-31 14:25)
+ ✔ github events rss support @done (14-05-31 15:07)
 
 later:
  ☐ handle polling git repos with a local tracking branch

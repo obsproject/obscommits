@@ -21,10 +21,11 @@ func (a sortableInt64) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a sortableInt64) Less(i, j int) bool { return a[i] < a[j] }
 
 type State struct {
-	Factoids       map[string]string
-	Factoidaliases map[string]string
-	Seenrss        map[string]int64
-	Admins         map[string]bool
+	Factoids         map[string]string
+	Factoidaliases   map[string]string
+	Seenrss          map[string]int64
+	Seengithubevents map[string]int64
+	Admins           map[string]bool
 }
 
 var debuggingenabled = true
@@ -47,6 +48,7 @@ func main() {
 		nc.AddOption("git", "hookpath", "/whatever")
 		nc.AddSection("rss")
 		nc.AddOption("rss", "url", "https://obsproject.com/forum/list/-/index.rss")
+		nc.AddOption("rss", "githubnewsurl", "dunce://need.to.set.it")
 
 		if err := nc.WriteConfigFile("settings.cfg", 0644, "OBScommits settings file"); err != nil {
 			F("Unable to create settings.cfg: ", err)
@@ -61,6 +63,7 @@ func main() {
 	listenaddr, _ := c.GetString("default", "listenaddress")
 	hookpath, _ := c.GetString("git", "hookpath")
 	rssurl, _ = c.GetString("rss", "url")
+	githubnewsurl, err = c.GetString("rss", "githubnewsurl")
 
 	loadState()
 	initTemplate()
@@ -136,6 +139,10 @@ func initState() {
 
 	if state.Seenrss == nil {
 		state.Seenrss = make(map[string]int64)
+	}
+
+	if state.Seengithubevents == nil {
+		state.Seengithubevents = make(map[string]int64)
 	}
 
 	if state.Admins == nil || !state.Admins["melkor"] {
