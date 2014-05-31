@@ -14,7 +14,7 @@ var (
 	analyzerre = regexp.MustCompile(`id="analyzer\-summary" data\-major\-issues="(\d+)" data\-minor\-issues="(\d+)">`)
 )
 
-func tryHandleAnalyzer(nick, message string) {
+func tryHandleAnalyzer(target, nick, message string) {
 	if !loglinkre.MatchString(message) {
 		return
 	}
@@ -52,7 +52,7 @@ func tryHandleAnalyzer(nick, message string) {
 			}
 		}
 	end:
-		srv.handleLines(lines, false, false)
+		srv.handleLines(target, lines, false)
 	}()
 }
 

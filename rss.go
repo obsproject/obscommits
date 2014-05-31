@@ -71,15 +71,15 @@ func itemHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
 	}
 	tmpllock.Unlock()
 
-	go srv.handleLines(items, false, false)
+	go srv.handleLines("#obsproject", items, false)
 
-	if len(state.Seenrss) > 400 { // GC old items, sort them by time, delete all that have the value beyond the last 400
+	if len(state.Seenrss) > 2000 { // GC old items, sort them by time, delete all that have the value beyond the last 2000
 		rsstimestamps := make(sortableInt64, 0, len(state.Seenrss))
 		for _, ts := range state.Seenrss {
 			rsstimestamps = append(rsstimestamps, ts)
 		}
 		sort.Sort(rsstimestamps)
-		rsstimestamps = rsstimestamps[:len(state.Seenrss)-400]
+		rsstimestamps = rsstimestamps[:len(state.Seenrss)-2000]
 		for key, value := range state.Seenrss {
 			for _, ts := range rsstimestamps {
 				if value == ts {

@@ -21,9 +21,10 @@ func (a sortableInt64) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a sortableInt64) Less(i, j int) bool { return a[i] < a[j] }
 
 type State struct {
-	Factoids map[string]string
-	Seenrss  map[string]int64
-	Admins   map[string]bool
+	Factoids       map[string]string
+	Factoidaliases map[string]string
+	Seenrss        map[string]int64
+	Admins         map[string]bool
 }
 
 var debuggingenabled = true
@@ -127,6 +128,10 @@ func initState() {
 
 	if state.Factoids == nil {
 		state.Factoids = make(map[string]string)
+	}
+
+	if state.Factoidaliases == nil {
+		state.Factoidaliases = make(map[string]string)
 	}
 
 	if state.Seenrss == nil {

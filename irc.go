@@ -38,11 +38,35 @@ func (srv *IRC) raw(s ...string) {
 		srv.buff.Write([]byte(v))
 	}
 	srv.buff.Write([]byte("\r\n"))
-	srv.Conn.Raw(srv.buff.String())
 
+	srv.Conn.Raw(srv.buff.String())
 }
 
-func (srv *IRC) handleLines(lines []string, showlast bool, todevchan bool) {
+func (srv *IRC) privmsg(target string, s ...string) {
+	srv.Lock()
+	defer srv.Unlock()
+
+	srv.buff.Reset()
+	for _, v := range s {
+		srv.buff.Write([]byte(v))
+	}
+
+	srv.Conn.Privmsg(target, srv.buff.String())
+}
+
+func (srv *IRC) notice(target string, s ...string) {
+	srv.Lock()
+	defer srv.Unlock()
+
+	srv.buff.Reset()
+	for _, v := range s {
+		srv.buff.Write([]byte(v))
+	}
+
+	srv.Conn.Notice(target, srv.buff.String())
+}
+
+func (srv *IRC) handleLines(target string, lines []string, showlast bool) {
 	l := len(lines)
 
 	if l == 0 {
@@ -59,11 +83,7 @@ func (srv *IRC) handleLines(lines []string, showlast bool, todevchan bool) {
 
 	// flood control is handled by the goirc lib
 	for _, c := range lines {
-		if todevchan {
-			srv.raw("PRIVMSG #obs-dev :", c)
-		} else {
-			srv.raw("PRIVMSG #obsproject :", c)
-		}
+		srv.privmsg(target, c)
 	}
 }
 
@@ -120,13 +140,18 @@ func (srv *IRC) onMessage(c *irc.Conn, line *irc.Line) {
 		return
 	}
 
+	if len(line.Args) == 0 {
+		return
+	}
+
+	target := line.Args[0]
+	if target == c.Me().Nick { // if we are the recipients, its a private message
+		target = line.Nick // so send it back privately too
+	}
+
 	// handle displaying of factoids
 	message := line.Text()
 	if len(message) > 0 && message[0:1] == "!" && len(line.Args) > 0 {
-		target := line.Args[0]
-		if target == c.Me().Nick { // if we are the recipients, its a private message
-			target = line.Nick // so send it back privately too
-		}
 		pos := strings.Index(message, " ")
 		if pos < 0 {
 			pos = len(message)
@@ -143,8 +168,8 @@ func (srv *IRC) onMessage(c *irc.Conn, line *irc.Line) {
 				factoidlist = append(factoidlist, strings.ToLower(k))
 			}
 			sort.Strings(factoidlist)
-			srv.raw("PRIVMSG ", target, " :", strings.Join(factoidlist, ", "))
-		} else if factoid, ok := state.Factoids[factoidkey]; ok && isalpha.MatchString(factoidkey) {
+			srv.privmsg(target, strings.Join(factoidlist, ", "))
+		} else if factoid, ok := getFactoidByKey(factoidkey); ok && isalpha.MatchString(factoidkey) {
 			if factoidUsedRecently(factoidkey) {
 				return
 			}
@@ -154,14 +179,27 @@ func (srv *IRC) onMessage(c *irc.Conn, line *irc.Line) {
 				if pos > 0 {                   // and only print the first thing delimeted by a space
 					rest = rest[0:pos]
 				}
-				srv.raw("PRIVMSG ", target, " :", rest, ": ", factoid)
+				srv.privmsg(target, rest, ": ", factoid)
 			} else { // otherwise just print the factoid
-				srv.raw("PRIVMSG ", target, " :", factoid)
+				srv.privmsg(target, factoid)
 			}
 		}
 	} else {
-		tryHandleAnalyzer(line.Nick, message)
+		tryHandleAnalyzer(target, line.Nick, message)
 	}
+}
+
+func getFactoidByKey(factoidkey string) (factoid string, ok bool) {
+restart:
+	if factoid, ok = state.Factoids[factoidkey]; ok {
+		return
+	}
+	factoidkey, ok = state.Factoidaliases[factoidkey]
+	if ok {
+		goto restart
+	}
+
+	return
 }
 
 func (srv *IRC) onAdminMessage(line *irc.Line) bool {
@@ -196,11 +234,11 @@ func (srv *IRC) onAdminMessage(line *irc.Line) bool {
 	case "addadmin":
 		// first argument is the host to match
 		state.Admins[s[1]] = true
-		srv.raw("NOTICE ", line.Nick, " :Added host successfully")
+		srv.notice(line.Nick, "Added host successfully")
 		factoidModified = true
 	case "deladmin":
 		delete(state.Admins, s[1])
-		srv.raw("NOTICE ", line.Nick, " :Removed host successfully")
+		srv.notice(line.Nick, "Removed host successfully")
 		factoidModified = true
 	case "add":
 		fallthrough
@@ -210,29 +248,67 @@ func (srv *IRC) onAdminMessage(line *irc.Line) bool {
 		}
 		state.Factoids[factoidkey] = factoid
 		factoidModified = true
-		srv.raw("NOTICE ", line.Nick, " :Added/Modified successfully")
+		srv.notice(line.Nick, "Added/Modified successfully")
 	case "del":
+	restartdelete:
 		if _, ok := state.Factoids[factoidkey]; ok {
-			srv.raw("NOTICE ", line.Nick, " :Deleted successfully")
+			delete(state.Factoids, factoidkey)
+			srv.notice(line.Nick, "Deleted successfully")
+			// clean up the aliases too
+			for k, v := range state.Factoidaliases {
+				if v == factoidkey {
+					delete(state.Factoidaliases, k)
+				}
+			}
+		} else if factoidkey, ok = state.Factoidaliases[factoidkey]; ok {
+			srv.notice(line.Nick, "Found an alias, deleting the original factoid")
+			goto restartdelete
 		}
-		delete(state.Factoids, factoidkey)
+
 		factoidModified = true
 	case "rename":
 		if !isalpha.MatchString(newfactoidkey) {
 			return true
 		}
 		if _, ok := state.Factoids[newfactoidkey]; ok {
-			srv.raw("NOTICE ", line.Nick, " :Renaming would overwrite, please delete first")
+			srv.notice(line.Nick, "Renaming would overwrite, please delete first")
 			return true
 		}
 		if _, ok := state.Factoids[factoidkey]; ok {
 			state.Factoids[newfactoidkey] = state.Factoids[factoidkey]
 			delete(state.Factoids, factoidkey)
+			// rename the aliases too
+			for k, v := range state.Factoidaliases {
+				if v == factoidkey {
+					state.Factoidaliases[k] = newfactoidkey
+				}
+			}
 			factoidModified = true
-			srv.raw("NOTICE ", line.Nick, " :Renamed successfully")
+			srv.notice(line.Nick, "Renamed successfully")
 		} else {
-			srv.raw("NOTICE ", line.Nick, " :Not present")
+			srv.notice(line.Nick, "Not present")
 		}
+	case "addalias":
+		fallthrough
+	case "modalias":
+		if len(s) < 3 {
+			return true
+		}
+
+		// newfactoidkey is the factoid we are going to add an alias for
+		if _, ok := state.Factoids[newfactoidkey]; ok {
+			state.Factoidaliases[factoidkey] = newfactoidkey
+			factoidModified = true
+			srv.notice(line.Nick, "Added/Modified alias successfully")
+		} else {
+			srv.notice(line.Nick, "No factoid with name ", newfactoidkey, " found")
+		}
+	case "delalias":
+		if _, ok := state.Factoidaliases[factoidkey]; ok {
+			srv.notice(line.Nick, "Deleted alias successfully")
+		}
+		delete(state.Factoidaliases, factoidkey)
+		factoidModified = true
 	case "raw":
 		// execute anything received from the private message with the command raw
 		srv.raw(factoidkey, " ", factoid)
