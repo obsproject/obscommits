@@ -6,7 +6,6 @@ import (
 	irc "github.com/fluffle/goirc/client"
 	"math/rand"
 	"regexp"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -128,18 +127,6 @@ func (srv *IRC) onConnect(c *irc.Conn, line *irc.Line) {
 
 func (srv *IRC) onMessage(c *irc.Conn, line *irc.Line) {
 
-	var isadmin bool
-	if len(line.Host) > 0 {
-		statelock.Lock()
-		isadmin = state.Admins[line.Host]
-		statelock.Unlock()
-	}
-
-	// handle administering the factoids
-	if isadmin && srv.onAdminMessage(line) {
-		return
-	}
-
 	if len(line.Args) == 0 {
 		return
 	}
@@ -149,64 +136,31 @@ func (srv *IRC) onMessage(c *irc.Conn, line *irc.Line) {
 		target = line.Nick // so send it back privately too
 	}
 
-	// handle displaying of factoids
 	message := line.Text()
-	if len(message) > 0 && message[0:1] == "!" && len(line.Args) > 0 {
-		pos := strings.Index(message, " ")
-		if pos < 0 {
-			pos = len(message)
-		}
-		factoidkey := strings.ToLower(message[1:pos])
+	var isadmin bool
+	if len(line.Host) > 0 {
 		statelock.Lock()
-		defer statelock.Unlock()
-		if factoidkey == "list" {
-			if factoidUsedRecently(factoidkey) {
-				return
-			}
-			factoidlist := make([]string, 0, len(state.Factoids))
-			for k, _ := range state.Factoids {
-				factoidlist = append(factoidlist, strings.ToLower(k))
-			}
-			sort.Strings(factoidlist)
-			srv.privmsg(target, strings.Join(factoidlist, ", "))
-		} else if factoid, ok := getFactoidByKey(factoidkey); ok && isalpha.MatchString(factoidkey) {
-			if factoidUsedRecently(factoidkey) {
-				return
-			}
-			if pos != len(message) { // there was a postfix
-				rest := message[pos+1:]        // skip the space
-				pos = strings.Index(rest, " ") // and search for the next space
-				if pos > 0 {                   // and only print the first thing delimeted by a space
-					rest = rest[0:pos]
-				}
-				srv.privmsg(target, rest, ": ", factoid)
-			} else { // otherwise just print the factoid
-				srv.privmsg(target, factoid)
-			}
-		}
-	} else {
-		tryHandleAnalyzer(target, line.Nick, message)
+		isadmin = state.Admins[line.Host]
+		statelock.Unlock()
 	}
-}
 
-func getFactoidByKey(factoidkey string) (factoid string, ok bool) {
-restart:
-	if factoid, ok = state.Factoids[factoidkey]; ok {
+	// handle administering the factoids
+	if isadmin && srv.onAdminMessage(target, line.Nick, message) {
 		return
 	}
-	factoidkey, ok = state.Factoidaliases[factoidkey]
-	if ok {
-		goto restart
-	}
 
-	return
+	if tryHandleFactoid(target, message) == true {
+		return
+	}
+	if tryHandleAnalyzer(target, line.Nick, message) == true {
+		return
+	}
 }
 
-func (srv *IRC) onAdminMessage(line *irc.Line) bool {
+func (srv *IRC) onAdminMessage(target, nick, message string) (abort bool) {
 
-	message := line.Text()
-	if len(message) > 0 && message[0:1] != "." {
-		return false
+	if len(message) == 0 && message[0:1] != "." {
+		return
 	}
 
 	s := strings.SplitN(message[1:], " ", 4)
@@ -214,112 +168,40 @@ func (srv *IRC) onAdminMessage(line *irc.Line) bool {
 		return false
 	}
 
+	var savestate bool
 	statelock.Lock()
-	defer statelock.Unlock()
-	var factoidModified bool
-	command := s[0]
-	factoidkey := strings.ToLower(s[1])
-	var newfactoidkey string
-	var factoid string
-	if len(s) >= 3 {
-		newfactoidkey = strings.ToLower(s[2])
-		factoid = s[2]
+	defer (func() {
+		if savestate {
+			saveState()
+		}
+		statelock.Unlock()
+	})()
+
+	abort, savestate = tryHandleAdminFactoid(target, nick, s)
+	if abort {
+		return
 	}
 
-	if len(s) == 4 {
-		factoid = s[2] + " " + s[3]
-	}
-
-	switch command {
+	switch s[0] {
 	case "addadmin":
 		// first argument is the host to match
 		state.Admins[s[1]] = true
-		srv.notice(line.Nick, "Added host successfully")
-		factoidModified = true
+		srv.notice(nick, "Added host successfully")
+		savestate = true
 	case "deladmin":
 		delete(state.Admins, s[1])
-		srv.notice(line.Nick, "Removed host successfully")
-		factoidModified = true
-	case "add":
-		fallthrough
-	case "mod":
-		if len(s) < 3 {
-			return true
-		}
-		state.Factoids[factoidkey] = factoid
-		factoidModified = true
-		srv.notice(line.Nick, "Added/Modified successfully")
-	case "del":
-	restartdelete:
-		if _, ok := state.Factoids[factoidkey]; ok {
-			delete(state.Factoids, factoidkey)
-			srv.notice(line.Nick, "Deleted successfully")
-			// clean up the aliases too
-			for k, v := range state.Factoidaliases {
-				if v == factoidkey {
-					delete(state.Factoidaliases, k)
-				}
-			}
-		} else if factoidkey, ok = state.Factoidaliases[factoidkey]; ok {
-			srv.notice(line.Nick, "Found an alias, deleting the original factoid")
-			goto restartdelete
-		}
-
-		factoidModified = true
-	case "rename":
-		if !isalpha.MatchString(newfactoidkey) {
-			return true
-		}
-		if _, ok := state.Factoids[newfactoidkey]; ok {
-			srv.notice(line.Nick, "Renaming would overwrite, please delete first")
-			return true
-		}
-		if _, ok := state.Factoids[factoidkey]; ok {
-			state.Factoids[newfactoidkey] = state.Factoids[factoidkey]
-			delete(state.Factoids, factoidkey)
-			// rename the aliases too
-			for k, v := range state.Factoidaliases {
-				if v == factoidkey {
-					state.Factoidaliases[k] = newfactoidkey
-				}
-			}
-			factoidModified = true
-			srv.notice(line.Nick, "Renamed successfully")
-		} else {
-			srv.notice(line.Nick, "Not present")
-		}
-	case "addalias":
-		fallthrough
-	case "modalias":
-		if len(s) < 3 {
-			return true
-		}
-
-		// newfactoidkey is the factoid we are going to add an alias for
-		if _, ok := state.Factoids[newfactoidkey]; ok {
-			state.Factoidaliases[factoidkey] = newfactoidkey
-			factoidModified = true
-			srv.notice(line.Nick, "Added/Modified alias successfully")
-		} else {
-			srv.notice(line.Nick, "No factoid with name ", newfactoidkey, " found")
-		}
-	case "delalias":
-		if _, ok := state.Factoidaliases[factoidkey]; ok {
-			srv.notice(line.Nick, "Deleted alias successfully")
-		}
-		delete(state.Factoidaliases, factoidkey)
-		factoidModified = true
+		srv.notice(nick, "Removed host successfully")
+		savestate = true
 	case "raw":
 		// execute anything received from the private message with the command raw
-		srv.raw(factoidkey, " ", factoid)
-	default:
-		return false
+		msg := s[2]
+		if len(s) == 4 {
+			msg += " " + s[3]
+		}
+		srv.raw(s[1], " ", msg)
 	}
 
-	if factoidModified {
-		saveState()
-	}
-	return true
+	return
 }
 
 func factoidUsedRecently(factoidkey string) bool {

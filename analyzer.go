@@ -14,7 +14,7 @@ var (
 	analyzerre = regexp.MustCompile(`id="analyzer\-summary" data\-major\-issues="(\d+)" data\-minor\-issues="(\d+)">`)
 )
 
-func tryHandleAnalyzer(target, nick, message string) {
+func tryHandleAnalyzer(target, nick, message string) (abort bool) {
 	if !loglinkre.MatchString(message) {
 		return
 	}
@@ -54,6 +54,8 @@ func tryHandleAnalyzer(target, nick, message string) {
 	end:
 		srv.handleLines(target, lines, false)
 	}()
+
+	return true
 }
 
 func analyzePastebin(url, nick string, linechan chan string, wg *sync.WaitGroup) {
