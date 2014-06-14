@@ -128,7 +128,7 @@
                     {{end}}
                   </ul>
                 </td>
-                <td class="factoid-text">{{.Text}}</td>
+                <td class="factoid-text">{{.Text | linkify}}</td>
               </tr>
             {{end}}
           </table>

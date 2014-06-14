@@ -1,11 +1,20 @@
 package main
 
 import (
+	"bytes"
 	"html/template"
+	"io"
 	"net/http"
+	"os"
+	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
+)
+
+var (
+	urlre = regexp.MustCompile(`https?://[^ ]+\.[^ ]+`)
 )
 
 var usedfactoids = map[string]time.Time{}
@@ -22,22 +31,92 @@ func (f Factoids) Len() int           { return len(f) }
 func (f Factoids) Less(i, j int) bool { return f[i].Name < f[j].Name }
 func (f Factoids) Swap(i, j int)      { f[i], f[j] = f[j], f[i] }
 
-func initFactoids(hookpath string) {
-	http.HandleFunc(hookpath, handleFactoidRequest)
+type Factoidtpl struct {
+	tpl      *template.Template
+	tplmtime time.Time
+	tplbuf   *bytes.Buffer
+	tpllen   int
+	tplout   []byte
+	valid    bool
+	data     []*Factoid
+	sync.Mutex
 }
 
-func handleFactoidRequest(w http.ResponseWriter, r *http.Request) {
-	t, _ := template.ParseFiles("factoid.tpl")
-	t.Funcs(template.FuncMap{
-		"linkify": func(s string) (ret string) {
-			// TODO
-			return s
+func (f *Factoidtpl) init() {
+	f.Lock()
+	defer f.Unlock()
+
+	f.tplbuf = bytes.NewBuffer(nil)
+	f.tpl = template.New("main").Funcs(template.FuncMap{
+		"linkify": func(s string) (ret template.HTML) {
+			s = template.HTMLEscapeString(s)
+			matches := urlre.FindAllString(s, -1)
+			b := bytes.NewBuffer(nil)
+			for _, url := range matches {
+				b.Reset()
+				b.WriteString(`<a target="_blank" href="`)
+				b.WriteString(url)
+				b.WriteString(`">`)
+				b.WriteString(url)
+				b.WriteString(`</a>`)
+				line, _ := b.ReadString('\x00')
+				s = strings.Replace(s, url, line, -1)
+			}
+
+			return template.HTML(s)
 		},
 	})
-	t.Execute(w, getFactoids())
+
+	go (func() {
+		t := time.NewTicker(30 * time.Second)
+		for {
+			<-t.C
+			f.checkTemplateChanged()
+		}
+	})()
+
 }
 
-func getFactoids() []*Factoid {
+func (f *Factoidtpl) invalidate() {
+	f.Lock()
+	defer f.Unlock()
+	f.valid = false
+}
+
+func (f *Factoidtpl) execute(w http.ResponseWriter) {
+	f.Lock()
+	defer f.Unlock()
+
+	w.Write(f.tplout[0:f.tpllen])
+}
+
+func (f *Factoidtpl) ensureFreshness() {
+	f.Lock()
+	defer f.Unlock()
+	if f.valid {
+		return
+	}
+
+	var err error
+	f.tpl, err = f.tpl.ParseFiles("factoid.tpl")
+	if err != nil {
+		F("failed parsing file", err)
+	}
+
+	f.ensureData()
+
+	f.tplbuf.Reset()
+	f.tpl.ExecuteTemplate(f.tplbuf, "factoid.tpl", f.data)
+	f.tpllen = f.tplbuf.Len()
+	if cap(f.tplout) < f.tpllen {
+		f.tplout = make([]byte, f.tpllen)
+	}
+	io.ReadFull(f.tplbuf, f.tplout)
+
+	f.valid = true
+}
+
+func (f *Factoidtpl) ensureData() {
 	statelock.RLock()
 	defer statelock.RUnlock()
 
@@ -60,7 +139,39 @@ func getFactoids() []*Factoid {
 	}
 
 	sort.Sort(Factoids(factoids))
-	return factoids
+	f.data = factoids
+}
+
+func (f *Factoidtpl) checkTemplateChanged() {
+	f.Lock()
+	defer f.Unlock()
+
+	if !f.valid {
+		return
+	}
+
+	info, err := os.Stat("factoid.tpl")
+	if err != nil {
+		D("Error stating factoid.tpl", err)
+		return
+	}
+
+	if !info.ModTime().Equal(f.tplmtime) {
+		f.valid = false
+	}
+}
+
+var factoidtpl = Factoidtpl{}
+
+func initFactoids(hookpath string) {
+	factoidtpl.init()
+
+	http.HandleFunc(hookpath, handleFactoidRequest)
+}
+
+func handleFactoidRequest(w http.ResponseWriter, r *http.Request) {
+	factoidtpl.ensureFreshness()
+	factoidtpl.execute(w)
 }
 
 func factoidUsedRecently(factoidkey string) bool {
@@ -224,6 +335,10 @@ func tryHandleAdminFactoid(target, nick string, parts []string) (abort, savestat
 	default:
 		abort = false
 		return
+	}
+
+	if savestate {
+		factoidtpl.invalidate()
 	}
 
 	return

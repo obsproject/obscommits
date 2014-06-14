@@ -89,7 +89,7 @@ func (srv *IRC) Init(addr string) {
 
 	cfg := irc.NewConfig("OBScommits")
 	cfg.Me.Ident = "obscommits"
-	cfg.Me.Name = "github.com/sztanpet/obscommits"
+	cfg.Me.Name = "http://obscommits.sztanpet.net/factoids"
 	cfg.Server = addr
 	cfg.NewNick = srv.NewNick
 	cfg.SplitLen = 430
