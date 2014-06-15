@@ -62,6 +62,7 @@ func initGithub(hookpath string) {
 		commits := make([]string, 0, len(data.Commits))
 		repo := data.Repository.Name
 		repourl := data.Repository.Url
+		b := bytes.NewBuffer(nil)
 
 		tmpllock.Lock()
 		defer tmpllock.Unlock()
@@ -76,7 +77,7 @@ func initGithub(hookpath string) {
 				continue // we don't care about anything but the master branch :(
 			}
 
-			b := bytes.NewBufferString("")
+			b.Reset()
 			tmpl.ExecuteTemplate(b, "git", &Commit{
 				Author:  v.Author.Username,
 				Url:     v.Url,

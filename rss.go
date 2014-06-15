@@ -35,10 +35,9 @@ func pollGitHub() {
 	feed := rss.New(5, true, nil, githubRSSHandler)
 	client := http.DefaultClient
 	if len(githubnewsurl) > 8 && githubnewsurl[:8] == "https://" {
-		tr := &http.Transport{
+		client = &http.Client{Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{},
-		}
-		client = &http.Client{Transport: tr}
+		}}
 	}
 
 	for {
@@ -58,10 +57,9 @@ func pollRSS() {
 	feed := rss.New(5, true, nil, itemHandler)
 	client := http.DefaultClient
 	if len(rssurl) > 8 && rssurl[:8] == "https://" {
-		tr := &http.Transport{
+		client = &http.Client{Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{},
-		}
-		client = &http.Client{Transport: tr}
+		}}
 	}
 
 	for {
@@ -120,6 +118,8 @@ func itemHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
 
 	var items []string
 	tmpllock.Lock()
+	b := bytes.NewBuffer(nil)
+
 	for _, item := range newitems {
 		hash := getHash(*item.Guid)
 		if _, ok := state.Seenrss[hash]; ok {
@@ -132,7 +132,7 @@ func itemHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
 			continue
 		}
 
-		b := bytes.NewBufferString("")
+		b.Reset()
 		tmpl.ExecuteTemplate(b, "rss", item)
 		items = append(items, b.String())
 	}
@@ -170,6 +170,8 @@ func githubRSSHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
 
 	var items []string
 	tmpllock.Lock()
+	b := bytes.NewBuffer(nil)
+
 	for _, item := range newitems {
 		if !githubeventsre.MatchString(item.Title) || !githublinkre.MatchString((*item.Links[0]).Href) {
 			continue
@@ -181,7 +183,7 @@ func githubRSSHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
 		}
 		state.Seengithubevents[hash] = time.Now().UTC().UnixNano()
 
-		b := bytes.NewBufferString("")
+		b.Reset()
 		tmpl.ExecuteTemplate(b, "githubevents", item)
 		items = append(items, b.String())
 	}
