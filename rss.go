@@ -33,12 +33,14 @@ func initRSS() {
 func pollGitHub() {
 	// 5 second timeout
 	feed := rss.New(5, true, nil, githubRSSHandler)
-	client := http.DefaultClient
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
 	if len(githubnewsurl) > 8 && githubnewsurl[:8] == "https://" {
-		client = &http.Client{Transport: &http.Transport{
+		client.Transport = &http.Transport{
 			TLSClientConfig:       &tls.Config{},
 			ResponseHeaderTimeout: time.Second,
-		}}
+		}
 	}
 
 	for {
@@ -56,12 +58,14 @@ func pollGitHub() {
 func pollRSS() {
 	// 5 second timeout
 	feed := rss.New(5, true, nil, itemHandler)
-	client := http.DefaultClient
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
 	if len(rssurl) > 8 && rssurl[:8] == "https://" {
-		client = &http.Client{Transport: &http.Transport{
+		client.Transport = &http.Transport{
 			TLSClientConfig:       &tls.Config{},
 			ResponseHeaderTimeout: time.Second,
-		}}
+		}
 	}
 
 	for {
@@ -80,9 +84,12 @@ func checkIfThreadHasSingleMessage(link string) bool {
 	hassinglemessage := make(chan bool)
 
 	go (func() {
-		client := &http.Client{Transport: &http.Transport{
-			ResponseHeaderTimeout: time.Second,
-		}}
+		client := &http.Client{
+			Timeout: 2 * time.Second,
+			Transport: &http.Transport{
+				ResponseHeaderTimeout: time.Second,
+			},
+		}
 		resp, err := client.Get(link)
 		ret := true // to be safe, we default to true meaning announce the topic
 		defer (func() {
