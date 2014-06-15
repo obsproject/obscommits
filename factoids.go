@@ -118,8 +118,7 @@ func (f *Factoidtpl) init() {
 				b.WriteString(`">`)
 				b.WriteString(url)
 				b.WriteString(`</a>`)
-				line, _ := b.String()
-				s = strings.Replace(s, url, line, -1)
+				s = strings.Replace(s, url, b.String(), -1)
 			}
 
 			return template.HTML(s)
@@ -183,8 +182,7 @@ func (f *Factoidtpl) init() {
 						b.WriteString(colors[secondarg])
 					}
 					b.WriteString(`">`)
-					m, _ = b.String()
-					return m
+					return b.String()
 				case Reset:
 					b.Reset()
 					for k, a := range state {
@@ -193,8 +191,7 @@ func (f *Factoidtpl) init() {
 						}
 						delete(state, k)
 					}
-					m, _ = b.String()
-					return m
+					return b.String()
 				}
 
 				return m
@@ -210,7 +207,7 @@ func (f *Factoidtpl) init() {
 						b.WriteString(v)
 					}
 				}
-				s, _ = b.String()
+				s = b.String()
 			}
 
 			ret = template.HTML(s)

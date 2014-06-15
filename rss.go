@@ -36,7 +36,8 @@ func pollGitHub() {
 	client := http.DefaultClient
 	if len(githubnewsurl) > 8 && githubnewsurl[:8] == "https://" {
 		client = &http.Client{Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{},
+			TLSClientConfig:       &tls.Config{},
+			ResponseHeaderTimeout: time.Second,
 		}}
 	}
 
@@ -58,7 +59,8 @@ func pollRSS() {
 	client := http.DefaultClient
 	if len(rssurl) > 8 && rssurl[:8] == "https://" {
 		client = &http.Client{Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{},
+			TLSClientConfig:       &tls.Config{},
+			ResponseHeaderTimeout: time.Second,
 		}}
 	}
 
@@ -78,7 +80,10 @@ func checkIfThreadHasSingleMessage(link string) bool {
 	hassinglemessage := make(chan bool)
 
 	go (func() {
-		resp, err := http.Get(link)
+		client := &http.Client{Transport: &http.Transport{
+			ResponseHeaderTimeout: time.Second,
+		}}
+		resp, err := client.Get(link)
 		ret := true // to be safe, we default to true meaning announce the topic
 		defer (func() {
 			hassinglemessage <- ret
