@@ -6,8 +6,8 @@
  ✔ factoid alias support @done (14-05-31 14:25)
  ✔ github events rss support @done (14-05-31 15:07)
  ✔ webpage for the factoids @done (14-06-01 01:19)
-   ☐ linkify the links in the factoids
-   ☐ handle the IRC control codes and bold/color the text appropriately
+   ✔ linkify the links in the factoids @done (14-06-15 01:19)
+   ✔ handle the IRC control codes and bold/color the text appropriately @done (14-06-15 10:09)
 
 later:
  ☐ handle polling git repos with a local tracking branch
