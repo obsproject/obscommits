@@ -114,7 +114,7 @@
       <div class="row factoids">
         <div class="panel panel-default">
           <div class="panel-heading">
-            <h2 id="factoids" class="panel-title">Factoids</h3>
+            <h2 id="factoids" class="panel-title">Factoids</h2>
           </div>
           <table class="table table-striped">
             <tr>
