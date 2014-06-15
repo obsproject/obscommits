@@ -13,8 +13,66 @@ import (
 	"time"
 )
 
+const (
+	White      = "0"
+	Black      = "1"
+	DarkBlue   = "2"
+	DarkGreen  = "3"
+	Red        = "4"
+	DarkRed    = "5"
+	DarkViolet = "6"
+	Orange     = "7"
+	Yellow     = "8"
+	LightGreen = "9"
+	Cyan       = "10"
+	LightCyan  = "11"
+	Blue       = "12"
+	Violet     = "13"
+	DarkGray   = "14"
+	LightGray  = "15"
+)
+
+var colors = map[string]string{
+	White:      "#ffffff",
+	Black:      "#000000",
+	DarkBlue:   "#3636B2",
+	DarkGreen:  "#2A8C2A",
+	Red:        "#C33B3B",
+	DarkRed:    "#C73232",
+	DarkViolet: "#80267F",
+	Orange:     "#66361F",
+	Yellow:     "#D9A641",
+	LightGreen: "#3DCC3D",
+	Cyan:       "#1A5555",
+	LightCyan:  "#2F8C74",
+	Blue:       "#4545E6",
+	Violet:     "#B037B0",
+	DarkGray:   "#4C4C4C",
+	LightGray:  "#959595",
+}
+
+const (
+	Bold          = "\x02"
+	Color         = "\x03"
+	Italic        = "\x09"
+	StrikeThrough = "\x13"
+	Reset         = "\x0f"
+	Underline     = "\x15"
+	Underline2    = "\x1f"
+	Reverse       = "\x16"
+)
+
+var tags = map[string][]string{
+	Bold:          {"<b>", "</b>"},
+	Italic:        {"<i>", "</i>"},
+	StrikeThrough: {"<strike>", "</strike>"},
+	Underline:     {"<u>", "</u>"},
+	Reverse:       {`<span class="reverse">`, "</span>"},
+}
+
 var (
-	urlre = regexp.MustCompile(`https?://[^ ]+\.[^ ]+`)
+	urlre     = regexp.MustCompile(`https?://[^ ]+\.[^ ]+`)
+	controlre = regexp.MustCompile("([\x02\x03\x09\x13\x0f\x15\x1f\x16])(?:(\\d+)?(?:,(\\d+))?)?")
 )
 
 var usedfactoids = map[string]time.Time{}
@@ -32,6 +90,7 @@ func (f Factoids) Less(i, j int) bool { return f[i].Name < f[j].Name }
 func (f Factoids) Swap(i, j int)      { f[i], f[j] = f[j], f[i] }
 
 type Factoidtpl struct {
+	basetpl  *template.Template
 	tpl      *template.Template
 	tplmtime time.Time
 	tplbuf   *bytes.Buffer
@@ -47,7 +106,7 @@ func (f *Factoidtpl) init() {
 	defer f.Unlock()
 
 	f.tplbuf = bytes.NewBuffer(nil)
-	f.tpl = template.New("main").Funcs(template.FuncMap{
+	f.basetpl = template.New("main").Funcs(template.FuncMap{
 		"linkify": func(s string) (ret template.HTML) {
 			s = template.HTMLEscapeString(s)
 			matches := urlre.FindAllString(s, -1)
@@ -64,6 +123,98 @@ func (f *Factoidtpl) init() {
 			}
 
 			return template.HTML(s)
+		},
+		"ircize": func(html template.HTML) (ret template.HTML) {
+			s := string(html)
+			// the state that signals what controlcode was started, it is an array
+			// because control codes can be stacked and we do not want unclosed tags
+			state := map[string][]string{}
+			b := bytes.NewBuffer(nil)
+
+			s = controlre.ReplaceAllStringFunc(s, func(m string) string {
+				match := controlre.FindStringSubmatch(m)
+				controlcode := match[1]
+				firstarg := match[2]
+				secondarg := match[3]
+
+				// normalize the two underline control codes into one
+				if controlcode == Underline2 {
+					controlcode = Underline
+				}
+
+				// just a controlcode without arguments, if there was one before,
+				// this closes it
+				if closetags, ok := state[controlcode]; firstarg == "" && ok {
+					m = strings.Join(closetags, "")
+					delete(state, controlcode)
+					return m
+				}
+
+				switch controlcode {
+				case Bold:
+					fallthrough
+				case Italic:
+					fallthrough
+				case StrikeThrough:
+					fallthrough
+				case Underline:
+					fallthrough
+				case Reverse:
+					closetags := state[controlcode]
+					closetags = append(closetags, tags[controlcode][1])
+					state[controlcode] = closetags
+					return tags[controlcode][0]
+				case Color:
+					// if there was no previous color started and this one has no
+					// arguments than just strip it because its invalid
+					if firstarg == "" {
+						return ""
+					}
+
+					closetags := state[controlcode]
+					closetags = append(closetags, "</span>")
+					state[controlcode] = closetags
+
+					b.Reset()
+					b.WriteString(`<span style="color: `)
+					b.WriteString(colors[firstarg])
+					if secondarg != "" {
+						b.WriteString("; background-color: ")
+						b.WriteString(colors[secondarg])
+					}
+					b.WriteString(`">`)
+					m, _ = b.ReadString('\x00')
+					return m
+				case Reset:
+					b.Reset()
+					for k, a := range state {
+						for _, v := range a {
+							b.WriteString(v)
+						}
+						delete(state, k)
+					}
+					m, _ = b.ReadString('\x00')
+					return m
+				}
+
+				return m
+			})
+
+			// there were unclosed tags, so close them by pasting them to the end of
+			// the string
+			if len(state) > 0 {
+				b.Reset()
+				b.WriteString(s)
+				for _, a := range state {
+					for _, v := range a {
+						b.WriteString(v)
+					}
+				}
+				s, _ = b.ReadString('\x00')
+			}
+
+			ret = template.HTML(s)
+			return ret
 		},
 	})
 
@@ -98,9 +249,10 @@ func (f *Factoidtpl) ensureFreshness() {
 	}
 
 	var err error
+	f.tpl, _ = f.basetpl.Clone()
 	f.tpl, err = f.tpl.ParseFiles("factoid.tpl")
 	if err != nil {
-		F("failed parsing file", err)
+		D("failed parsing file", err)
 	}
 
 	f.ensureData()

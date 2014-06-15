@@ -24,6 +24,10 @@
       .nobr {
         white-space: nowrap;
       }
+      .reverse {
+        direction: rtl;
+        unicode-bidi: bidi-override;
+      }
 
       h2.panel-title {
         font-weight: bold;
@@ -122,13 +126,16 @@
               <tr>
                 <td class="factoid-name" id="factoid-{{.Name}}">{{.Name}}</td>
                 <td class="factoid-aliases">
-                  <ul>
-                    {{range .Aliases}}
-                      <li>{{.}}</li>
-                    {{end}}
-                  </ul>
+                  {{$aliaslen := .Aliases|len}}
+                  {{if gt $aliaslen 0}}
+                    <ul>
+                      {{range .Aliases}}
+                        <li>{{.}}</li>
+                      {{end}}
+                    </ul>
+                  {{end}}
                 </td>
-                <td class="factoid-text">{{.Text | linkify}}</td>
+                <td class="factoid-text">{{.Text | linkify | ircize}}</td>
               </tr>
             {{end}}
           </table>
