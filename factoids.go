@@ -93,7 +93,6 @@ type Factoidtpl struct {
 	basetpl  *template.Template
 	tpl      *template.Template
 	tplmtime time.Time
-	tplbuf   *bytes.Buffer
 	tpllen   int
 	tplout   []byte
 	valid    bool
@@ -105,7 +104,6 @@ func (f *Factoidtpl) init() {
 	f.Lock()
 	defer f.Unlock()
 
-	f.tplbuf = bytes.NewBuffer(nil)
 	f.basetpl = template.New("main").Funcs(template.FuncMap{
 		"linkify": func(s string) (ret template.HTML) {
 			s = template.HTMLEscapeString(s)
@@ -170,11 +168,16 @@ func (f *Factoidtpl) init() {
 						return ""
 					}
 
-					closetags := state[controlcode]
-					closetags = append(closetags, "</span>")
-					state[controlcode] = closetags
-
 					b.Reset()
+					// have to close previous span tag if embedded
+					if len(state[controlcode]) > 0 {
+						b.WriteString(state[controlcode][0])
+					} else {
+						closetags := state[controlcode]
+						closetags = append(closetags, "</span>")
+						state[controlcode] = closetags
+					}
+
 					b.WriteString(`<span style="color: `)
 					b.WriteString(colors[firstarg])
 					if secondarg != "" {
@@ -254,13 +257,13 @@ func (f *Factoidtpl) ensureFreshness() {
 
 	f.ensureData()
 
-	f.tplbuf.Reset()
-	f.tpl.ExecuteTemplate(f.tplbuf, "factoid.tpl", f.data)
-	f.tpllen = f.tplbuf.Len()
+	b := bytes.NewBuffer(nil)
+	f.tpl.ExecuteTemplate(b, "factoid.tpl", f.data)
+	f.tpllen = b.Len()
 	if cap(f.tplout) < f.tpllen {
 		f.tplout = make([]byte, f.tpllen)
 	}
-	io.ReadFull(f.tplbuf, f.tplout)
+	io.ReadFull(b, f.tplout)
 
 	f.valid = true
 }
