@@ -91,12 +91,10 @@ func (f Factoids) Swap(i, j int)      { f[i], f[j] = f[j], f[i] }
 
 type Factoidtpl struct {
 	basetpl  *template.Template
-	tpl      *template.Template
 	tplmtime time.Time
 	tpllen   int
 	tplout   []byte
 	valid    bool
-	data     []*Factoid
 	sync.Mutex
 }
 
@@ -105,7 +103,7 @@ func (f *Factoidtpl) init() {
 	defer f.Unlock()
 
 	f.basetpl = template.New("main").Funcs(template.FuncMap{
-		"linkify": func(s string) (ret template.HTML) {
+		"linkify": func(s string) template.HTML {
 			s = template.HTMLEscapeString(s)
 			matches := urlre.FindAllString(s, -1)
 			b := bytes.NewBuffer(nil)
@@ -121,7 +119,7 @@ func (f *Factoidtpl) init() {
 
 			return template.HTML(s)
 		},
-		"ircize": func(html template.HTML) (ret template.HTML) {
+		"ircize": func(html template.HTML) template.HTML {
 			s := string(html)
 			// the state that signals what controlcode was started, it is an array
 			// because control codes can be stacked and we do not want unclosed tags
@@ -213,8 +211,7 @@ func (f *Factoidtpl) init() {
 				s = b.String()
 			}
 
-			ret = template.HTML(s)
-			return ret
+			return template.HTML(s)
 		},
 	})
 
@@ -249,16 +246,16 @@ func (f *Factoidtpl) ensureFreshness() {
 	}
 
 	var err error
-	f.tpl, _ = f.basetpl.Clone()
-	f.tpl, err = f.tpl.ParseFiles("factoid.tpl")
+	tpl, _ := f.basetpl.Clone()
+	tpl, err = tpl.ParseFiles("factoid.tpl")
 	if err != nil {
 		D("failed parsing file", err)
 	}
 
-	f.ensureData()
+	data := f.getFactoids()
 
 	b := bytes.NewBuffer(nil)
-	f.tpl.ExecuteTemplate(b, "factoid.tpl", f.data)
+	tpl.ExecuteTemplate(b, "factoid.tpl", data)
 	f.tpllen = b.Len()
 	if cap(f.tplout) < f.tpllen {
 		f.tplout = make([]byte, f.tpllen)
@@ -268,7 +265,7 @@ func (f *Factoidtpl) ensureFreshness() {
 	f.valid = true
 }
 
-func (f *Factoidtpl) ensureData() {
+func (f *Factoidtpl) getFactoids() []*Factoid {
 	statelock.RLock()
 	defer statelock.RUnlock()
 
@@ -291,7 +288,7 @@ func (f *Factoidtpl) ensureData() {
 	}
 
 	sort.Sort(Factoids(factoids))
-	f.data = factoids
+	return factoids
 }
 
 func (f *Factoidtpl) checkTemplateChanged() {
