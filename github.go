@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
-	"text/template"
 )
 
 type GHAuthor struct {
@@ -38,9 +37,6 @@ type Commit struct {
 }
 
 func initGithub(hookpath string) {
-	tmpllock.Lock()
-	tmpl = template.Must(tmpl.Parse(`{{define "git"}}[{{.Repo}}|{{.Author}}] {{truncate .Message 200 "..."}} {{.Repourl}}/commit/{{truncate .ID 7 ""}}{{end}}`))
-	tmpllock.Unlock()
 
 	http.HandleFunc(hookpath, func(w http.ResponseWriter, r *http.Request) {
 		payload := r.FormValue("payload")
@@ -64,8 +60,6 @@ func initGithub(hookpath string) {
 		repourl := data.Repository.Url
 		b := bytes.NewBuffer(nil)
 
-		tmpllock.Lock()
-		defer tmpllock.Unlock()
 		for _, v := range data.Commits {
 			firstline := strings.TrimSpace(v.Message)
 			pos = strings.Index(firstline, "\n")
@@ -78,7 +72,7 @@ func initGithub(hookpath string) {
 			}
 
 			b.Reset()
-			tmpl.ExecuteTemplate(b, "git", &Commit{
+			tmpl.execute(b, "git", &Commit{
 				Author:  v.Author.Username,
 				Url:     v.Url,
 				Message: firstline,

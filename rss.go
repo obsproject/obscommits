@@ -8,8 +8,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"regexp"
-	"sort"
-	"text/template"
 	"time"
 )
 
@@ -22,10 +20,6 @@ var (
 )
 
 func initRSS() {
-	tmpllock.Lock()
-	tmpl = template.Must(tmpl.Parse(`{{define "rss"}}[Forum|{{.Author.Name}}] {{truncate .Title 150 "..." | unescape}} {{$l := index .Links 0}}{{$l.Href}}{{end}}`))
-	tmpl = template.Must(tmpl.Parse(`{{define "githubevents"}}[GH] {{.Title | unescape}} {{$l := index .Links 0}}{{$l.Href}}{{end}}`))
-	tmpllock.Unlock()
 	go pollRSS()
 	go pollGitHub()
 }
@@ -125,19 +119,14 @@ func itemHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
 		return
 	}
 
-	statelock.Lock()
-	defer statelock.Unlock()
-
 	var items []string
-	tmpllock.Lock()
 	b := bytes.NewBuffer(nil)
 
 	for _, item := range newitems {
-		hash := getHash(*item.Guid)
-		if _, ok := state.Seenrss[hash]; ok {
+		if !state.addRssHash(*item.Guid) {
 			continue
 		}
-		state.Seenrss[hash] = time.Now().UTC().UnixNano()
+
 		// we check after marking the thread as seen because regardless of the fact
 		// that the check fails, we do not want to check it again
 		if !checkIfThreadHasSingleMessage(*item.Guid) {
@@ -145,30 +134,12 @@ func itemHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
 		}
 
 		b.Reset()
-		tmpl.ExecuteTemplate(b, "rss", item)
+		tmpl.execute(b, "rss", item)
 		items = append(items, b.String())
 	}
-	tmpllock.Unlock()
 
 	go srv.handleLines("#obsproject", items, false)
 
-	if len(state.Seenrss) > 2000 { // GC old items, sort them by time, delete all that have the value beyond the last 2000
-		rsstimestamps := make(sortableInt64, 0, len(state.Seenrss))
-		for _, ts := range state.Seenrss {
-			rsstimestamps = append(rsstimestamps, ts)
-		}
-		sort.Sort(rsstimestamps)
-		rsstimestamps = rsstimestamps[:len(state.Seenrss)-2000]
-		for key, value := range state.Seenrss {
-			for _, ts := range rsstimestamps {
-				if value == ts {
-					delete(state.Seenrss, key)
-				}
-			}
-		}
-	}
-
-	saveState()
 }
 
 func githubRSSHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
@@ -177,47 +148,24 @@ func githubRSSHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
 		return
 	}
 
-	statelock.Lock()
-	defer statelock.Unlock()
-
 	var items []string
-	tmpllock.Lock()
 	b := bytes.NewBuffer(nil)
 
 	for _, item := range newitems {
-		if !githubeventsre.MatchString(item.Title) || !githublinkre.MatchString((*item.Links[0]).Href) {
+		if !githubeventsre.MatchString(item.Title) ||
+			!githublinkre.MatchString((*item.Links[0]).Href) {
 			continue
 		}
 
-		hash := getHash(item.Id)
-		if _, ok := state.Seengithubevents[hash]; ok {
+		if !state.addGithubEvent(item.Id) {
 			continue
 		}
-		state.Seengithubevents[hash] = time.Now().UTC().UnixNano()
 
 		b.Reset()
-		tmpl.ExecuteTemplate(b, "githubevents", item)
+		tmpl.execute(b, "githubevents", item)
 		items = append(items, b.String())
 	}
-	tmpllock.Unlock()
 
 	go srv.handleLines("#obs-dev", items, false)
 
-	if len(state.Seengithubevents) > 30 {
-		rsstimestamps := make(sortableInt64, 0, len(state.Seengithubevents))
-		for _, ts := range state.Seengithubevents {
-			rsstimestamps = append(rsstimestamps, ts)
-		}
-		sort.Sort(rsstimestamps)
-		rsstimestamps = rsstimestamps[:len(state.Seengithubevents)-30]
-		for key, value := range state.Seengithubevents {
-			for _, ts := range rsstimestamps {
-				if value == ts {
-					delete(state.Seengithubevents, key)
-				}
-			}
-		}
-	}
-
-	saveState()
 }

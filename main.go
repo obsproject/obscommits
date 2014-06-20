@@ -1,41 +1,15 @@
 package main
 
 import (
-	"bytes"
-	"crypto/md5"
-	"encoding/base64"
-	"encoding/gob"
+	"net/http"
+
 	irclogger "github.com/fluffle/goirc/logging"
 	conf "github.com/msbranco/goconfig"
-	"html"
-	"io/ioutil"
-	"net/http"
-	"strings"
-	"sync"
-	"text/template"
 )
-
-type sortableInt64 []int64
-
-func (a sortableInt64) Len() int           { return len(a) }
-func (a sortableInt64) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a sortableInt64) Less(i, j int) bool { return a[i] < a[j] }
-
-type State struct {
-	Factoids         map[string]string
-	Factoidaliases   map[string]string
-	Seenrss          map[string]int64
-	Seengithubevents map[string]int64
-	Admins           map[string]bool
-}
 
 var debuggingenabled = true
 var state State
-var (
-	tmpl      *template.Template
-	tmpllock  = sync.RWMutex{}
-	statelock = sync.RWMutex{}
-)
+var tmpl Template
 
 func main() {
 	irclogger.SetLogger(debugLogger{})
@@ -69,8 +43,8 @@ func main() {
 	rssurl, _ = c.GetString("rss", "url")
 	githubnewsurl, err = c.GetString("rss", "githubnewsurl")
 
-	loadState()
-	initTemplate()
+	state.init()
+	tmpl.init()
 	initIRC(ircaddr)
 
 	initRSS()
@@ -80,96 +54,4 @@ func main() {
 	if err := http.ListenAndServe(listenaddr, nil); err != nil {
 		F("ListenAndServe:", err)
 	}
-}
-
-func initTemplate() {
-	tmpllock.Lock()
-	defer tmpllock.Unlock()
-
-	tmpl = template.New("main")
-	tmpl.Funcs(template.FuncMap{
-		"truncate": func(s string, l int, endstring string) (ret string) {
-			if len(s) > l {
-				ret = s[0:l-len(endstring)] + endstring
-			} else {
-				ret = s
-			}
-			return
-		},
-		"trim":     strings.TrimSpace,
-		"unescape": html.UnescapeString,
-	})
-}
-
-// needs to be called with locks held!
-func saveState() {
-	buff := new(bytes.Buffer)
-	enc := gob.NewEncoder(buff)
-	err := enc.Encode(state)
-	if err != nil {
-		D("Error encoding state:", err)
-	}
-	err = ioutil.WriteFile(".state.dc", buff.Bytes(), 0600)
-	if err != nil {
-		D("Error with writing out state file:", err)
-	}
-}
-
-func loadState() {
-	statelock.Lock()
-	defer statelock.Unlock()
-
-	contents, err := ioutil.ReadFile(".state.dc")
-	if err != nil {
-		D("Error while reading from state file")
-		initState()
-		return
-	}
-	buff := bytes.NewBuffer(contents)
-	dec := gob.NewDecoder(buff)
-	err = dec.Decode(&state)
-
-	if err != nil {
-		D("Error decoding state, initializing", err)
-	}
-	initState()
-}
-
-func initState() {
-
-	if state.Factoids == nil {
-		state.Factoids = make(map[string]string)
-	}
-
-	if state.Factoidaliases == nil {
-		state.Factoidaliases = make(map[string]string)
-	}
-
-	if state.Seenrss == nil {
-		state.Seenrss = make(map[string]int64)
-	}
-
-	if state.Seengithubevents == nil {
-		state.Seengithubevents = make(map[string]int64)
-	}
-
-	if state.Admins == nil || !state.Admins["melkor"] {
-		state.Admins = map[string]bool{
-			"melkor":                       true,
-			"sztanpet.users.quakenet.org":  true,
-			"R1CH.users.quakenet.org":      true,
-			"Jim.users.quakenet.org":       true,
-			"Warchamp7.users.quakenet.org": true,
-			"hwd.users.quakenet.org":       true,
-			"paibox.users.quakenet.org":    true,
-			"ThoNohT.users.quakenet.org":   true,
-			"dodgepong.users.quakenet.org": true,
-			"Sapiens.users.quakenet.org":   true,
-		}
-	}
-}
-
-func getHash(data string) string {
-	hash := md5.Sum([]byte(data))
-	return base64.StdEncoding.EncodeToString(hash[:])
 }

@@ -266,11 +266,11 @@ func (f *Factoidtpl) ensureFreshness() {
 }
 
 func (f *Factoidtpl) getFactoids() []*Factoid {
-	statelock.RLock()
-	defer statelock.RUnlock()
+	state.Lock()
+	defer state.Unlock()
 
 	aliases := make(map[string][]string)
-	for alias, factoid := range state.Factoidaliases {
+	for alias, factoid := range state.data.Factoidaliases {
 		aliases[factoid] = append(aliases[factoid], alias)
 	}
 
@@ -278,8 +278,8 @@ func (f *Factoidtpl) getFactoids() []*Factoid {
 		sort.Strings(a)
 	}
 
-	factoids := make([]*Factoid, 0, len(state.Factoids))
-	for name, text := range state.Factoids {
+	factoids := make([]*Factoid, 0, len(state.data.Factoids))
+	for name, text := range state.data.Factoids {
 		factoids = append(factoids, &Factoid{
 			Name:    name,
 			Text:    text,
@@ -323,25 +323,24 @@ func handleFactoidRequest(w http.ResponseWriter, r *http.Request) {
 	factoidtpl.execute(w)
 }
 
-func factoidUsedRecently(factoidkey string) bool {
+func factoidUsedRecently(factoidkey string) (ret bool) {
 	if lastused, ok := usedfactoids[factoidkey]; ok && time.Since(lastused) < 30*time.Second {
-		D("Not handling factoid:", factoidkey, ", because it was used too recently!")
-		usedfactoids[factoidkey] = time.Now()
-		return true
+		ret = true
 	}
 	usedfactoids[factoidkey] = time.Now()
-	return false
+	return
 }
 
 // checks if there is a factoid, if there isnt tries to look if its an alias
 // and then recurses with the found factoid
+// the state lock needs to be held by the caller
 func getFactoidByKey(factoidkey string) (factoid, key string, ok bool) {
 	key = factoidkey
 restart:
-	if factoid, ok = state.Factoids[key]; ok {
+	if factoid, ok = state.data.Factoids[key]; ok {
 		return
 	}
-	key, ok = state.Factoidaliases[key]
+	key, ok = state.data.Factoidaliases[key]
 	if ok {
 		goto restart
 	}
@@ -362,8 +361,8 @@ func tryHandleFactoid(target, message string) (abort bool) {
 	if !isalpha.MatchString(factoidkey) {
 		return
 	}
-	statelock.Lock()
-	defer statelock.Unlock()
+	state.Lock()
+	defer state.Unlock()
 	if factoid, factoidkey, ok := getFactoidByKey(factoidkey); ok {
 		if factoidUsedRecently(factoidkey) {
 			return
@@ -383,10 +382,10 @@ func tryHandleFactoid(target, message string) (abort bool) {
 	return true
 }
 
-func tryHandleAdminFactoid(target, nick string, parts []string) (abort, savestate bool) {
-
+func tryHandleAdminFactoid(target, nick string, parts []string) (abort bool) {
 	var newfactoidkey string
 	var factoid string
+	var savestate bool
 	abort = true
 	command := parts[0]
 	factoidkey := strings.ToLower(parts[1])
@@ -407,22 +406,28 @@ func tryHandleAdminFactoid(target, nick string, parts []string) (abort, savestat
 		if len(parts) < 3 {
 			return
 		}
-		state.Factoids[factoidkey] = factoid
+		state.Lock()
+		defer state.Unlock()
+
+		state.data.Factoids[factoidkey] = factoid
 		savestate = true
 		srv.notice(nick, "Added/Modified successfully")
 
 	case "del":
+		state.Lock()
+		defer state.Unlock()
+
 	restartdelete:
-		if _, ok := state.Factoids[factoidkey]; ok {
-			delete(state.Factoids, factoidkey)
+		if _, ok := state.data.Factoids[factoidkey]; ok {
+			delete(state.data.Factoids, factoidkey)
 			srv.notice(nick, "Deleted successfully")
 			// clean up the aliases too
-			for k, v := range state.Factoidaliases {
+			for k, v := range state.data.Factoidaliases {
 				if v == factoidkey {
-					delete(state.Factoidaliases, k)
+					delete(state.data.Factoidaliases, k)
 				}
 			}
-		} else if factoidkey, ok = state.Factoidaliases[factoidkey]; ok {
+		} else if factoidkey, ok = state.data.Factoidaliases[factoidkey]; ok {
 			srv.notice(nick, "Found an alias, deleting the original factoid")
 			goto restartdelete
 		}
@@ -433,21 +438,24 @@ func tryHandleAdminFactoid(target, nick string, parts []string) (abort, savestat
 		if !isalpha.MatchString(newfactoidkey) {
 			return
 		}
-		if _, ok := state.Factoids[newfactoidkey]; ok {
+		state.Lock()
+		defer state.Unlock()
+
+		if _, ok := state.data.Factoids[newfactoidkey]; ok {
 			srv.notice(nick, "Renaming would overwrite, please delete first")
 			return
 		}
-		if _, ok := state.Factoidaliases[newfactoidkey]; ok {
+		if _, ok := state.data.Factoidaliases[newfactoidkey]; ok {
 			srv.notice(nick, "Renaming would overwrite an alias, please delete first")
 			return
 		}
-		if _, ok := state.Factoids[factoidkey]; ok {
-			state.Factoids[newfactoidkey] = state.Factoids[factoidkey]
-			delete(state.Factoids, factoidkey)
+		if _, ok := state.data.Factoids[factoidkey]; ok {
+			state.data.Factoids[newfactoidkey] = state.data.Factoids[factoidkey]
+			delete(state.data.Factoids, factoidkey)
 			// rename the aliases too
-			for k, v := range state.Factoidaliases {
+			for k, v := range state.data.Factoidaliases {
 				if v == factoidkey {
-					state.Factoidaliases[k] = newfactoidkey
+					state.data.Factoidaliases[k] = newfactoidkey
 				}
 			}
 			savestate = true
@@ -462,12 +470,15 @@ func tryHandleAdminFactoid(target, nick string, parts []string) (abort, savestat
 		if len(parts) < 3 {
 			return
 		}
+		state.Lock()
+		defer state.Unlock()
+
 		// newfactoidkey is the factoid we are going to add an alias for
 		// if itself is an alias, get the original factoid key, that is what
 		// getFactoidByKey does
 		_, newfactoidkey, ok := getFactoidByKey(newfactoidkey)
 		if ok {
-			state.Factoidaliases[factoidkey] = newfactoidkey
+			state.data.Factoidaliases[factoidkey] = newfactoidkey
 			savestate = true
 			srv.notice(nick, "Added/Modified alias for ", newfactoidkey, " successfully")
 		} else {
@@ -475,9 +486,12 @@ func tryHandleAdminFactoid(target, nick string, parts []string) (abort, savestat
 		}
 
 	case "delalias":
-		if _, ok := state.Factoidaliases[factoidkey]; ok {
+		state.Lock()
+		defer state.Unlock()
+
+		if _, ok := state.data.Factoidaliases[factoidkey]; ok {
 			srv.notice(nick, "Deleted alias successfully")
-			delete(state.Factoidaliases, factoidkey)
+			delete(state.data.Factoidaliases, factoidkey)
 			savestate = true
 		}
 
@@ -487,6 +501,7 @@ func tryHandleAdminFactoid(target, nick string, parts []string) (abort, savestat
 	}
 
 	if savestate {
+		state.save()
 		factoidtpl.invalidate()
 	}
 

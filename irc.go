@@ -3,12 +3,13 @@ package main
 import (
 	"bytes"
 	"fmt"
-	irc "github.com/fluffle/goirc/client"
 	"math/rand"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
+
+	irc "github.com/fluffle/goirc/client"
 )
 
 type IRC struct {
@@ -33,9 +34,9 @@ func (srv *IRC) raw(s ...string) {
 
 	srv.buff.Reset()
 	for _, v := range s {
-		srv.buff.Write([]byte(v))
+		srv.buff.WriteString(v)
 	}
-	srv.buff.Write([]byte("\r\n"))
+	srv.buff.WriteString("\r\n")
 
 	srv.Conn.Raw(srv.buff.String())
 }
@@ -95,7 +96,6 @@ func (srv *IRC) Init(addr string) {
 	cfg.SplitLen = 430
 	srv.Addr = addr
 	c := irc.Client(cfg)
-	c.EnableStateTracking()
 	c.HandleFunc(irc.DISCONNECTED, srv.onDisconnect)
 	c.HandleFunc(irc.CONNECTED, srv.onConnect)
 	c.HandleFunc(irc.PRIVMSG, srv.onMessage)
@@ -139,9 +139,7 @@ func (srv *IRC) onMessage(c *irc.Conn, line *irc.Line) {
 	message := line.Text()
 	var isadmin bool
 	if len(line.Host) > 0 {
-		statelock.Lock()
-		isadmin = state.Admins[line.Host]
-		statelock.Unlock()
+		isadmin = state.isAdmin(line.Host)
 	}
 
 	// handle administering the factoids
@@ -168,16 +166,7 @@ func (srv *IRC) onAdminMessage(target, nick, message string) (abort bool) {
 		return false
 	}
 
-	var savestate bool
-	statelock.Lock()
-	defer (func() {
-		if savestate {
-			saveState()
-		}
-		statelock.Unlock()
-	})()
-
-	abort, savestate = tryHandleAdminFactoid(target, nick, s)
+	abort = tryHandleAdminFactoid(target, nick, s)
 	if abort {
 		return
 	}
@@ -185,13 +174,11 @@ func (srv *IRC) onAdminMessage(target, nick, message string) (abort bool) {
 	switch s[0] {
 	case "addadmin":
 		// first argument is the host to match
-		state.Admins[s[1]] = true
+		state.addAdmin(s[1])
 		srv.notice(nick, "Added host successfully")
-		savestate = true
 	case "deladmin":
-		delete(state.Admins, s[1])
+		state.delAdmin(s[1])
 		srv.notice(nick, "Removed host successfully")
-		savestate = true
 	case "raw":
 		// execute anything received from the private message with the command raw
 		msg := s[2]
