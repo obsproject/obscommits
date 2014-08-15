@@ -34,7 +34,7 @@ func (t *Template) init() {
 	t.t = template.Must(t.t.Parse(`{{define "git"}}[{{.Repo}}|{{.Author}}] {{truncate .Message 200 "..."}} {{.Repourl}}/commit/{{truncate .ID 7 ""}}{{end}}`))
 	t.t = template.Must(t.t.Parse(`{{define "rss"}}[Forum|{{.Author.Name}}] {{truncate .Title 150 "..." | unescape}} {{$l := index .Links 0}}{{$l.Href}}{{end}}`))
 	t.t = template.Must(t.t.Parse(`{{define "githubevents"}}[GH] {{.Title | unescape}} {{$l := index .Links 0}}{{$l.Href}}{{end}}`))
-	t.t = template.Must(t.t.Parse(`{{define "mantisissue"}}[M{{if gt (len .Categories) 0}}|{{$c := index .Categories 0}}{{$c.Text}}{{end}}] {{.Title | unescape}} {{$l := index .Links 0}}{{$l.Href}}{{end}}`))
+	t.t = template.Must(t.t.Parse(`{{define "mantisissue"}}[M|{{$c := index .Categories 0}}{{$c.Text}}] {{.Title | unescape}} {{$l := index .Links 0}}{{$l.Href}}{{end}}`))
 
 }
 
