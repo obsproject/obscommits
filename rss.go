@@ -18,6 +18,7 @@ var (
 	githubeventsre = regexp.MustCompile(`.* opened (issue|pull request) .*`)
 	githublinkre   = regexp.MustCompile(`.*//github.com/jp9000/.*`)
 	mantistitlere  = regexp.MustCompile(`^\d+: (.+)`)
+	forumauthorre  = regexp.MustCompile(`^.+@.+ \((.+)\)$`)
 )
 
 func initRSS() {
@@ -156,6 +157,11 @@ func itemHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
 		// that the check fails, we do not want to check it again
 		if !checkIfThreadHasSingleMessage(*item.Guid) {
 			continue
+		}
+
+		match := forumauthorre.FindStringSubmatch(item.Author.Name)
+		if len(match) > 1 {
+			item.Author.Name = match[1]
 		}
 
 		b.Reset()
