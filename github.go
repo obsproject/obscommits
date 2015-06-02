@@ -7,231 +7,182 @@ import (
 	"strings"
 )
 
-type GHAuthor struct {
-	Username string
-}
-type GHCommit struct {
-	Author  GHAuthor
-	Url     string
-	Message string
-	Id      string
-}
-type GHRepo struct {
-	Name string
-	Url  string
-}
-type GHJson struct {
-	Ref        string
-	Commits    []GHCommit
-	Repository GHRepo
-}
-
-type Commit struct {
-	Author  string // commits[0].author.username
-	Url     string // commits[0].url
-	Message string // commits[0].message
-	ID      string // commits[0].id
-	Repo    string // repository.name
-	Repourl string // repository.url
-	Branch  string // .ref the part after refs/heads/
-}
-
 func initGithub(hookpath string) {
-
 	http.HandleFunc(hookpath, func(w http.ResponseWriter, r *http.Request) {
-		payload := r.FormValue("payload")
-		if len(payload) == 0 {
-			return
+		switch r.Header.Get("X-Github-Event") {
+		case "push":
+			pushHandler(r)
+		case "gollum":
+			wikiHandler(r)
+		case "pull_request":
+			prHandler(r)
 		}
+	})
+}
 
-		D("received payload:\n", payload)
+func pushHandler(r *http.Request) {
+	payload := r.FormValue("payload")
+	if len(payload) == 0 {
+		return
+	}
 
-		var data GHJson
-		err := json.Unmarshal([]byte(payload), &data)
-		if err != nil {
-			P("Error unmarshaling json:", err, "payload was: ", payload)
-			return
-		}
-
-		pos := strings.LastIndex(data.Ref, "/") + 1
-		branch := data.Ref[pos:]
-		commits := make([]string, 0, len(data.Commits))
-		repo := data.Repository.Name
-		repourl := data.Repository.Url
-		b := bytes.NewBuffer(nil)
-
-		for _, v := range data.Commits {
-			firstline := strings.TrimSpace(v.Message)
-			pos = strings.Index(firstline, "\n")
-			if pos > 0 {
-				firstline = strings.TrimSpace(firstline[:pos])
+	var data struct {
+		Ref     string
+		Commits []struct {
+			Author struct {
+				Username string
 			}
+			Url     string
+			Message string
+			Id      string
+		}
+		Repository struct {
+			Name string
+			Url  string
+		}
+	}
 
-			if branch != "master" {
-				continue // we don't care about anything but the master branch :(
-			}
+	err := json.Unmarshal([]byte(payload), &data)
+	if err != nil {
+		P("Error unmarshaling json:", err, "payload was: ", payload)
+		return
+	}
 
-			b.Reset()
-			tmpl.execute(b, "git", &Commit{
-				Author:  v.Author.Username,
-				Url:     v.Url,
-				Message: firstline,
-				ID:      v.Id,
-				Repo:    repo,
-				Repourl: repourl,
-				Branch:  branch,
-			})
-			commits = append(commits, b.String())
+	pos := strings.LastIndex(data.Ref, "/") + 1
+	branch := data.Ref[pos:]
+	lines := make([]string, 0, len(data.Commits))
+	repo := data.Repository.Name
+	repourl := data.Repository.Url
+	b := bytes.NewBuffer(nil)
+
+	if branch != "master" {
+		return
+	}
+
+	for _, v := range data.Commits {
+		firstline := strings.TrimSpace(v.Message)
+		pos = strings.Index(firstline, "\n")
+		if pos > 0 {
+			firstline = strings.TrimSpace(firstline[:pos])
 		}
 
-		go srv.handleLines("#obs-dev", commits, true)
+		b.Reset()
+		tmpl.execute(b, "push", &struct {
+			Author  string // commits[0].author.username
+			Url     string // commits[0].url
+			Message string // commits[0].message
+			ID      string // commits[0].id
+			Repo    string // repository.name
+			Repourl string // repository.url
+			Branch  string // .ref the part after refs/heads/
+		}{
+			Author:  v.Author.Username,
+			Url:     v.Url,
+			Message: firstline,
+			ID:      v.Id,
+			Repo:    repo,
+			Repourl: repourl,
+			Branch:  branch,
+		})
+		lines = append(lines, b.String())
+	}
+
+	if l := len(lines); l > 5 {
+		lines = lines[l-5:]
+	}
+
+	go srv.handleLines("#obs-dev", lines, true)
+}
+
+func prHandler(r *http.Request) {
+	payload := r.FormValue("payload")
+	if len(payload) == 0 {
+		return
+	}
+
+	var data struct {
+		Action       string
+		Pull_request struct {
+			Html_url string
+			Title    string
+			User     struct {
+				Login string
+			}
+		}
+	}
+
+	err := json.Unmarshal([]byte(payload), &data)
+	if err != nil {
+		P("Error unmarshaling json:", err, "payload was: ", payload)
+		return
+	}
+
+	if data.Action != "opened" {
+		return
+	}
+
+	b := bytes.NewBuffer(nil)
+	tmpl.execute(b, "pr", &struct {
+		Author string
+		Title  string
+		Url    string
+	}{
+		Author: data.Pull_request.User.Login,
+		Title:  data.Pull_request.Title,
+		Url:    data.Pull_request.Html_url,
 	})
 
+	go srv.handleLines("#obs-dev", []string{b.String()}, true)
 }
 
-/*
-{
-   "after":"1481a2de7b2a7d02428ad93446ab166be7793fbb",
-   "before":"17c497ccc7cca9c2f735aa07e9e3813060ce9a6a",
-   "commits":[
-      {
-         "added":[
+func wikiHandler(r *http.Request) {
+	payload := r.FormValue("payload")
+	if len(payload) == 0 {
+		return
+	}
 
-         ],
-         "author":{
-            "email":"lolwut@noway.biz",
-            "name":"Garen Torikian",
-            "username":"octokitty"
-         },
-         "committer":{
-            "email":"lolwut@noway.biz",
-            "name":"Garen Torikian",
-            "username":"octokitty"
-         },
-         "distinct":true,
-         "id":"c441029cf673f84c8b7db52d0a5944ee5c52ff89",
-         "message":"Test",
-         "modified":[
-            "README.md"
-         ],
-         "removed":[
+	var data struct {
+		Pages []struct {
+			Page_name string
+			Action    string
+			Sha       string
+			Html_url  string
+		}
+		Sender struct {
+			Login string
+		}
+	}
 
-         ],
-         "timestamp":"2013-02-22T13:50:07-08:00",
-         "url":"https://github.com/octokitty/testing/commit/c441029cf673f84c8b7db52d0a5944ee5c52ff89"
-      },
-      {
-         "added":[
+	err := json.Unmarshal([]byte(payload), &data)
+	if err != nil {
+		P("Error unmarshaling json:", err, "payload was: ", payload)
+		return
+	}
 
-         ],
-         "author":{
-            "email":"lolwut@noway.biz",
-            "name":"Garen Torikian",
-            "username":"octokitty"
-         },
-         "committer":{
-            "email":"lolwut@noway.biz",
-            "name":"Garen Torikian",
-            "username":"octokitty"
-         },
-         "distinct":true,
-         "id":"36c5f2243ed24de58284a96f2a643bed8c028658",
-         "message":"This is me testing the windows client.",
-         "modified":[
-            "README.md"
-         ],
-         "removed":[
+	lines := make([]string, 0, len(data.Pages))
+	b := bytes.NewBuffer(nil)
+	for _, v := range data.Pages {
 
-         ],
-         "timestamp":"2013-02-22T14:07:13-08:00",
-         "url":"https://github.com/octokitty/testing/commit/36c5f2243ed24de58284a96f2a643bed8c028658"
-      },
-      {
-         "added":[
-            "words/madame-bovary.txt"
-         ],
-         "author":{
-            "email":"lolwut@noway.biz",
-            "name":"Garen Torikian",
-            "username":"octokitty"
-         },
-         "committer":{
-            "email":"lolwut@noway.biz",
-            "name":"Garen Torikian",
-            "username":"octokitty"
-         },
-         "distinct":true,
-         "id":"1481a2de7b2a7d02428ad93446ab166be7793fbb",
-         "message":"Rename madame-bovary.txt to words/madame-bovary.txt",
-         "modified":[
+		b.Reset()
+		tmpl.execute(b, "wiki", &struct {
+			Author string
+			Page   string
+			Url    string
+			Action string
+			Sha    string
+		}{
+			Author: data.Sender.Login,
+			Page:   v.Page_name,
+			Url:    v.Html_url,
+			Action: v.Action,
+			Sha:    v.Sha,
+		})
+		lines = append(lines, b.String())
+	}
 
-         ],
-         "removed":[
-            "madame-bovary.txt"
-         ],
-         "timestamp":"2013-03-12T08:14:29-07:00",
-         "url":"https://github.com/octokitty/testing/commit/1481a2de7b2a7d02428ad93446ab166be7793fbb"
-      }
-   ],
-   "compare":"https://github.com/octokitty/testing/compare/17c497ccc7cc...1481a2de7b2a",
-   "created":false,
-   "deleted":false,
-   "forced":false,
-   "head_commit":{
-      "added":[
-         "words/madame-bovary.txt"
-      ],
-      "author":{
-         "email":"lolwut@noway.biz",
-         "name":"Garen Torikian",
-         "username":"octokitty"
-      },
-      "committer":{
-         "email":"lolwut@noway.biz",
-         "name":"Garen Torikian",
-         "username":"octokitty"
-      },
-      "distinct":true,
-      "id":"1481a2de7b2a7d02428ad93446ab166be7793fbb",
-      "message":"Rename madame-bovary.txt to words/madame-bovary.txt",
-      "modified":[
+	if l := len(lines); l > 5 {
+		lines = lines[l-5:]
+	}
 
-      ],
-      "removed":[
-         "madame-bovary.txt"
-      ],
-      "timestamp":"2013-03-12T08:14:29-07:00",
-      "url":"https://github.com/octokitty/testing/commit/1481a2de7b2a7d02428ad93446ab166be7793fbb"
-   },
-   "pusher":{
-      "email":"lolwut@noway.biz",
-      "name":"Garen Torikian"
-   },
-   "ref":"refs/heads/master",
-   "repository":{
-      "created_at":1332977768,
-      "description":"",
-      "fork":false,
-      "forks":0,
-      "has_downloads":true,
-      "has_issues":true,
-      "has_wiki":true,
-      "homepage":"",
-      "id":3860742,
-      "language":"Ruby",
-      "master_branch":"master",
-      "name":"testing",
-      "open_issues":2,
-      "owner":{
-         "email":"lolwut@noway.biz",
-         "name":"octokitty"
-      },
-      "private":false,
-      "pushed_at":1363295520,
-      "size":2156,
-      "stargazers":1,
-      "url":"https://github.com/octokitty/testing",
-      "watchers":1
-   }
+	go srv.handleLines("#obs-dev", lines, true)
 }
-*/

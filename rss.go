@@ -23,7 +23,6 @@ var (
 
 func initRSS() {
 	go pollRSS()
-	go pollGitHub()
 	go pollMantis()
 }
 
