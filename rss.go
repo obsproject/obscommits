@@ -12,11 +12,8 @@ import (
 )
 
 var rssurl string
-var githubnewsurl string
 var (
 	messagecountre = regexp.MustCompile(`<li id="post\-\d+" class="sectionMain message`)
-	githubeventsre = regexp.MustCompile(`.* opened (issue|pull request) .*`)
-	githublinkre   = regexp.MustCompile(`.*//github.com/jp9000/.*`)
 	mantistitlere  = regexp.MustCompile(`^\d+: (.+)`)
 	forumauthorre  = regexp.MustCompile(`^.+@.+ \((.+)\)$`)
 )
@@ -40,31 +37,6 @@ func pollMantis() {
 	for {
 
 		if err := feed.FetchClient("https://obsproject.com/mantis/issues_rss.php?", client, nil); err != nil {
-			P("RSS fetch error:", err)
-			<-time.After(5 * time.Minute)
-			continue
-		}
-
-		<-time.After(time.Duration(feed.SecondsTillUpdate() * int64(time.Second)))
-	}
-}
-
-func pollGitHub() {
-	// 5 second timeout
-	feed := rss.New(5, true, nil, githubRSSHandler)
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-	}
-	if len(githubnewsurl) > 8 && githubnewsurl[:8] == "https://" {
-		client.Transport = &http.Transport{
-			TLSClientConfig:       &tls.Config{},
-			ResponseHeaderTimeout: time.Second,
-		}
-	}
-
-	for {
-
-		if err := feed.FetchClient(githubnewsurl, client, nil); err != nil {
 			P("RSS fetch error:", err)
 			<-time.After(5 * time.Minute)
 			continue
@@ -169,34 +141,6 @@ func itemHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
 	}
 
 	go srv.handleLines("#obsproject", items, false)
-
-}
-
-func githubRSSHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
-
-	if len(newitems) == 0 {
-		return
-	}
-
-	var items []string
-	b := bytes.NewBuffer(nil)
-
-	for _, item := range newitems {
-		if !githubeventsre.MatchString(item.Title) ||
-			!githublinkre.MatchString((*item.Links[0]).Href) {
-			continue
-		}
-
-		if !state.addGithubEvent(item.Id) {
-			continue
-		}
-
-		b.Reset()
-		tmpl.execute(b, "githubevents", item)
-		items = append(items, b.String())
-	}
-
-	go srv.handleLines("#obs-dev", items, false)
 
 }
 

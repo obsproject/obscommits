@@ -41,7 +41,6 @@ func main() {
 	githookpath, _ := c.GetString("git", "hookpath")
 	factoidhookpath, _ := c.GetString("factoids", "hookpath")
 	rssurl, _ = c.GetString("rss", "url")
-	githubnewsurl, err = c.GetString("rss", "githubnewsurl")
 
 	state.init()
 	tmpl.init()
