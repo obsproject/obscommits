@@ -16,6 +16,8 @@ func initGithub(hookpath string) {
 			wikiHandler(r)
 		case "pull_request":
 			prHandler(r)
+		case "issues":
+			issueHandler(r)
 		}
 	})
 }
@@ -185,4 +187,45 @@ func wikiHandler(r *http.Request) {
 	}
 
 	go srv.handleLines("#obs-dev", lines, true)
+}
+
+func issueHandler(r *http.Request) {
+	payload := r.FormValue("payload")
+	if len(payload) == 0 {
+		return
+	}
+
+	var data struct {
+		Action string
+		Issue  struct {
+			Title    string
+			Html_url string
+			User     struct {
+				Login string
+			}
+		}
+	}
+
+	err := json.Unmarshal([]byte(payload), &data)
+	if err != nil {
+		P("Error unmarshaling json:", err, "payload was: ", payload)
+		return
+	}
+
+	if data.Action != "opened" {
+		return
+	}
+
+	b := bytes.NewBuffer(nil)
+	tmpl.execute(b, "issues", &struct {
+		Author string
+		Title  string
+		Url    string
+	}{
+		Author: data.Issue.User.Login,
+		Title:  data.Issue.Title,
+		Url:    data.Issue.Html_url,
+	})
+
+	go srv.handleLines("#obs-dev", []string{b.String()}, true)
 }
