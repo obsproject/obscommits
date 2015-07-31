@@ -22,12 +22,17 @@ func initGithub(hookpath string) {
 	})
 }
 
-func pushHandler(r *http.Request) {
-	payload := r.FormValue("payload")
-	if len(payload) == 0 {
-		return
+func handlePayload(r *http.Request, data interface{}) error {
+	if r.Header.Get("Content-Type") == "application/json" {
+		dec := json.NewDecoder(r.Body)
+		return dec.Decode(&data)
+	} else {
+		payload := r.FormValue("payload")
+		return json.Unmarshal([]byte(payload), &data)
 	}
+}
 
+func pushHandler(r *http.Request) {
 	var data struct {
 		Ref     string
 		Commits []struct {
@@ -44,9 +49,9 @@ func pushHandler(r *http.Request) {
 		}
 	}
 
-	err := json.Unmarshal([]byte(payload), &data)
+	err := handlePayload(r, &data)
 	if err != nil {
-		P("Error unmarshaling json:", err, "payload was: ", payload)
+		P("Error unmarshaling json:", err)
 		return
 	}
 
@@ -97,11 +102,6 @@ func pushHandler(r *http.Request) {
 }
 
 func prHandler(r *http.Request) {
-	payload := r.FormValue("payload")
-	if len(payload) == 0 {
-		return
-	}
-
 	var data struct {
 		Action       string
 		Pull_request struct {
@@ -113,9 +113,9 @@ func prHandler(r *http.Request) {
 		}
 	}
 
-	err := json.Unmarshal([]byte(payload), &data)
+	err := handlePayload(r, &data)
 	if err != nil {
-		P("Error unmarshaling json:", err, "payload was: ", payload)
+		P("Error unmarshaling json:", err)
 		return
 	}
 
@@ -138,11 +138,6 @@ func prHandler(r *http.Request) {
 }
 
 func wikiHandler(r *http.Request) {
-	payload := r.FormValue("payload")
-	if len(payload) == 0 {
-		return
-	}
-
 	var data struct {
 		Pages []struct {
 			Page_name string
@@ -155,9 +150,9 @@ func wikiHandler(r *http.Request) {
 		}
 	}
 
-	err := json.Unmarshal([]byte(payload), &data)
+	err := handlePayload(r, &data)
 	if err != nil {
-		P("Error unmarshaling json:", err, "payload was: ", payload)
+		P("Error unmarshaling json:", err)
 		return
 	}
 
@@ -190,11 +185,6 @@ func wikiHandler(r *http.Request) {
 }
 
 func issueHandler(r *http.Request) {
-	payload := r.FormValue("payload")
-	if len(payload) == 0 {
-		return
-	}
-
 	var data struct {
 		Action string
 		Issue  struct {
@@ -206,9 +196,9 @@ func issueHandler(r *http.Request) {
 		}
 	}
 
-	err := json.Unmarshal([]byte(payload), &data)
+	err := handlePayload(r, &data)
 	if err != nil {
-		P("Error unmarshaling json:", err, "payload was: ", payload)
+		P("Error unmarshaling json:", err)
 		return
 	}
 
