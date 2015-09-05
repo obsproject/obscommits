@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+const maxLines = 5
+
 func initGithub(hookpath string) {
 	http.HandleFunc(hookpath, func(w http.ResponseWriter, r *http.Request) {
 		switch r.Header.Get("X-Github-Event") {
@@ -57,7 +59,7 @@ func pushHandler(r *http.Request) {
 
 	pos := strings.LastIndex(data.Ref, "/") + 1
 	branch := data.Ref[pos:]
-	lines := make([]string, 0, len(data.Commits))
+	lines := make([]string, 0, 5)
 	repo := data.Repository.Name
 	repourl := data.Repository.Url
 	b := bytes.NewBuffer(nil)
@@ -66,7 +68,9 @@ func pushHandler(r *http.Request) {
 		return
 	}
 
-	for _, v := range data.Commits {
+	needSkip := len(data.Commits) > maxLines
+
+	for k, v := range data.Commits {
 		firstline := strings.TrimSpace(v.Message)
 		pos = strings.Index(firstline, "\n")
 		if pos > 0 {
@@ -74,28 +78,45 @@ func pushHandler(r *http.Request) {
 		}
 
 		b.Reset()
-		tmpl.execute(b, "push", &struct {
-			Author  string // commits[0].author.username
-			Url     string // commits[0].url
-			Message string // commits[0].message
-			ID      string // commits[0].id
-			Repo    string // repository.name
-			Repourl string // repository.url
-			Branch  string // .ref the part after refs/heads/
-		}{
-			Author:  v.Author.Username,
-			Url:     v.Url,
-			Message: firstline,
-			ID:      v.Id,
-			Repo:    repo,
-			Repourl: repourl,
-			Branch:  branch,
-		})
-		lines = append(lines, b.String())
-	}
+		if needSkip && k == len(data.Commits)-maxLines {
+			tmpl.execute(b, "pushSkipped", &struct {
+				Author    string // commits[i].author.username
+				FromID    string // commits[0].id
+				ToID      string // commits[len -5].id
+				SkipCount int
+				Repo      string // repository.name
+				RepoURL   string // repository.url
+			}{
+				Author:    v.Author.Username,
+				FromID:    data.Commits[0].Id,
+				ToID:      v.Id,
+				SkipCount: len(data.Commits) - 4,
+				Repo:      repo,
+				RepoURL:   repourl,
+			})
+		} else if !needSkip || k > len(data.Commits)-maxLines {
+			tmpl.execute(b, "push", &struct {
+				Author  string // commits[i].author.username
+				Url     string // commits[i].url
+				Message string // commits[i].message
+				ID      string // commits[i].id
+				Repo    string // repository.name
+				RepoURL string // repository.url
+				Branch  string // .ref the part after refs/heads/
+			}{
+				Author:  v.Author.Username,
+				Url:     v.Url,
+				Message: firstline,
+				ID:      v.Id,
+				Repo:    repo,
+				RepoURL: repourl,
+				Branch:  branch,
+			})
+		} else {
+			continue
+		}
 
-	if l := len(lines); l > 5 {
-		lines = lines[l-5:]
+		lines = append(lines, b.String())
 	}
 
 	go srv.handleLines("#obs-dev", lines, true)
