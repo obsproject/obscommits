@@ -1,10 +1,30 @@
+/***
+  This file is part of obscommits.
+
+  Copyright (c) 2015 Peter Sztan <sztanpet@gmail.com>
+
+  obscommits is free software; you can redistribute it and/or modify it
+  under the terms of the GNU Lesser General Public License as published by
+  the Free Software Foundation; either version 3 of the License, or
+  (at your option) any later version.
+
+  obscommits is distributed in the hope that it will be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+  Lesser General Public License for more details.
+
+  You should have received a copy of the GNU Lesser General Public License
+  along with obscommits; If not, see <http://www.gnu.org/licenses/>.
+***/
+
 package main
 
 import (
 	"net/http"
 
-	irclogger "github.com/fluffle/goirc/logging"
-	conf "github.com/msbranco/goconfig"
+	"github.com/sztanpet/obscommits/internal/config"
+	"github.com/sztanpet/obscommits/internal/debug"
+	"golang.org/x/net/context"
 )
 
 var debuggingenabled = true
@@ -12,35 +32,17 @@ var state State
 var tmpl Template
 
 func main() {
-	irclogger.SetLogger(debugLogger{})
-	c, err := conf.ReadConfigFile("settings.cfg")
-	if err != nil {
-		nc := conf.NewConfigFile()
-		nc.AddOption("default", "debug", "false")
-		nc.AddOption("default", "ircserver", "irc.quakenet.org:6667")
-		nc.AddOption("default", "listenaddress", ":9998")
-		nc.AddSection("git")
-		nc.AddOption("git", "hookpath", "/whatever")
-		nc.AddSection("rss")
-		nc.AddOption("rss", "url", "https://obsproject.com/forum/list/-/index.rss")
-		nc.AddOption("rss", "githubnewsurl", "dunce://need.to.set.it")
-		nc.AddSection("factoids")
-		nc.AddOption("factoids", "hookpath", "/factoids")
+	ctx := context.Background()
+	ctx = config.Init(ctx)
+	ctx = d.Init(ctx)
 
-		if err := nc.WriteConfigFile("settings.cfg", 0644, "OBScommits settings file"); err != nil {
-			F("Unable to create settings.cfg: ", err)
-		}
-		if c, err = conf.ReadConfigFile("settings.cfg"); err != nil {
-			F("Unable to read settings.cfg: ", err)
-		}
-	}
-
-	debuggingenabled, _ = c.GetBool("default", "debug")
-	ircaddr, _ := c.GetString("default", "ircserver")
-	listenaddr, _ := c.GetString("default", "listenaddress")
-	githookpath, _ := c.GetString("git", "hookpath")
-	factoidhookpath, _ := c.GetString("factoids", "hookpath")
-	rssurl, _ = c.GetString("rss", "url")
+	cfg := config.GetFromContext(ctx)
+	debuggingenabled = cfg.Debug.Debug
+	ircaddr := cfg.IRC.Addr
+	listenaddr := cfg.Website.Addr
+	githookpath := cfg.Github.HookPath
+	factoidhookpath := cfg.Factoids.HookPath
+	rssurl = cfg.RSS.ForumURL
 
 	state.init()
 	tmpl.init()
