@@ -78,11 +78,11 @@ func pushHandler(r *http.Request) {
 		}
 
 		b.Reset()
-		if needSkip && k == len(data.Commits)-maxLines {
+		if needSkip && k == len(data.Commits)-2 {
 			tmpl.execute(b, "pushSkipped", &struct {
 				Author    string // commits[i].author.username
 				FromID    string // commits[0].id
-				ToID      string // commits[len -5].id
+				ToID      string // commits[len - 2].id
 				SkipCount int
 				Repo      string // repository.name
 				RepoURL   string // repository.url
@@ -90,7 +90,7 @@ func pushHandler(r *http.Request) {
 				Author:    v.Author.Username,
 				FromID:    data.Commits[0].Id,
 				ToID:      v.Id,
-				SkipCount: len(data.Commits) - 4,
+				SkipCount: len(data.Commits) - 2,
 				Repo:      repo,
 				RepoURL:   repourl,
 			})
