@@ -11,6 +11,7 @@ import (
 
 	irc "github.com/fluffle/goirc/client"
 	"github.com/sztanpet/obscommits/internal/debug"
+	st "github.com/sztanpet/obscommits/internal/state"
 )
 
 type IRC struct {
@@ -22,10 +23,32 @@ type IRC struct {
 
 var srv = IRC{}
 var (
+	adminState *st.State
+	admins     map[string]struct{}
+)
+var (
 	isalpha = regexp.MustCompile(`^[a-zA-Z0-9-.]+$`)
 )
 
 func initIRC(addr string) {
+	var err error
+	adminState, err = st.New("admins.state", &map[string]struct{}{
+		"melkor":                       struct{}{},
+		"sztanpet.users.quakenet.org":  struct{}{},
+		"R1CH.users.quakenet.org":      struct{}{},
+		"Jim.users.quakenet.org":       struct{}{},
+		"Warchamp7.users.quakenet.org": struct{}{},
+		"hwd.users.quakenet.org":       struct{}{},
+		"paibox.users.quakenet.org":    struct{}{},
+		"ThoNohT.users.quakenet.org":   struct{}{},
+		"dodgepong.users.quakenet.org": struct{}{},
+		"Sapiens.users.quakenet.org":   struct{}{},
+	})
+	if err != nil {
+		d.F(err.Error())
+	}
+
+	admins = adminState.Get().(map[string]struct{})
 	srv.Init(addr)
 }
 
@@ -140,7 +163,9 @@ func (srv *IRC) onMessage(c *irc.Conn, line *irc.Line) {
 	message := line.Text()
 	var isadmin bool
 	if len(line.Host) > 0 {
-		isadmin = state.isAdmin(line.Host)
+		adminState.Lock()
+		_, isadmin = admins[line.Host]
+		adminState.Unlock()
 	}
 
 	// handle administering the factoids
@@ -175,10 +200,16 @@ func (srv *IRC) onAdminMessage(target, nick, message string) (abort bool) {
 	switch s[0] {
 	case "addadmin":
 		// first argument is the host to match
-		state.addAdmin(s[1])
+		adminState.Lock()
+		admins[s[1]] = struct{}{}
+		adminState.Unlock()
+		adminState.Save()
 		srv.notice(nick, "Added host successfully")
 	case "deladmin":
-		state.delAdmin(s[1])
+		adminState.Lock()
+		delete(admins, s[1])
+		adminState.Unlock()
+		adminState.Save()
 		srv.notice(nick, "Removed host successfully")
 	case "raw":
 		// execute anything received from the private message with the command raw
