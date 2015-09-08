@@ -37,15 +37,22 @@ func New(p string, d interface{}) (*State, error) {
 		data: d,
 	}
 
-	// non-atomic :(
-	if ret.exists() {
-		err := ret.load()
+	// closing the file unlocks it, always
+	ret.Lock()
+
+	// os.IsExist returns false when the error is nil, so use IsNotExist
+	f, err := os.OpenFile(ret.path, os.O_RDONLY, 0600)
+	if !os.IsNotExist(err) {
+		err := ret.load(f)
+		ret.close(f)
 		if err != nil {
 			return nil, err
 		}
+	} else {
+		ret.close(f)
 	}
 
-	err := ret.Save()
+	err = ret.Save()
 	if err != nil {
 		return nil, err
 	}
@@ -67,13 +74,9 @@ func (s *State) Get() interface{} {
 	return ret
 }
 
-func (s *State) load() error {
-	s.Lock()
-	f, err := os.OpenFile(s.path, os.O_RDONLY, 0600)
-	defer s.close(f)
-
+func (s *State) load(f *os.File) error {
 	d := gob.NewDecoder(f)
-	err = d.Decode(s.data)
+	err := d.Decode(s.data)
 	if err != nil {
 		return err
 	}
@@ -103,15 +106,6 @@ func (s *State) Save() error {
 	}
 
 	return nil
-}
-
-func (s *State) exists() bool {
-	s.Lock()
-	f, err := os.OpenFile(s.path, os.O_RDONLY, 0600)
-	defer s.close(f)
-
-	// os.IsExist returns false when the error is nil, so use IsNotExist
-	return !os.IsNotExist(err)
 }
 
 func (s *State) close(f *os.File) {
