@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+
+	"github.com/sztanpet/obscommits/internal/debug"
 )
 
 const maxLines = 5
@@ -53,7 +55,7 @@ func pushHandler(r *http.Request) {
 
 	err := handlePayload(r, &data)
 	if err != nil {
-		P("Error unmarshaling json:", err)
+		d.P("Error unmarshaling json:", err)
 		return
 	}
 
@@ -136,7 +138,7 @@ func prHandler(r *http.Request) {
 
 	err := handlePayload(r, &data)
 	if err != nil {
-		P("Error unmarshaling json:", err)
+		d.P("Error unmarshaling json:", err)
 		return
 	}
 
@@ -173,7 +175,7 @@ func wikiHandler(r *http.Request) {
 
 	err := handlePayload(r, &data)
 	if err != nil {
-		P("Error unmarshaling json:", err)
+		d.P("Error unmarshaling json:", err)
 		return
 	}
 
@@ -219,7 +221,7 @@ func issueHandler(r *http.Request) {
 
 	err := handlePayload(r, &data)
 	if err != nil {
-		P("Error unmarshaling json:", err)
+		d.P("Error unmarshaling json:", err)
 		return
 	}
 

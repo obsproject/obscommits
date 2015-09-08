@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"regexp"
 	"sync"
+
+	"github.com/sztanpet/obscommits/internal/debug"
 )
 
 var (
@@ -63,20 +65,20 @@ func analyzePastebin(url, nick string, linechan chan string, wg *sync.WaitGroup)
 
 	resp, err := http.Get(url)
 	if err != nil {
-		D("error getting link:", err)
+		d.D("error getting link:", err)
 		return
 	}
 
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		D("could not ReadAll the response body", err)
+		d.D("could not ReadAll the response body", err)
 		return
 	}
 
 	issuecount := analyzerre.FindSubmatch(body)
 	if len(issuecount) <= 0 {
-		D("did not find analyzer-summary, url was", url)
+		d.D("did not find analyzer-summary, url was", url)
 		return
 	}
 

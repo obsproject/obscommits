@@ -53,6 +53,6 @@ func main() {
 	initGithub(githookpath)
 
 	if err := http.ListenAndServe(listenaddr, nil); err != nil {
-		F("ListenAndServe:", err)
+		d.F("ListenAndServe:", err)
 	}
 }

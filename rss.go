@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"regexp"
 	"time"
+
+	"github.com/sztanpet/obscommits/internal/debug"
 )
 
 var rssurl string
@@ -37,7 +39,7 @@ func pollMantis() {
 	for {
 
 		if err := feed.FetchClient("https://obsproject.com/mantis/issues_rss.php?", client, nil); err != nil {
-			P("RSS fetch error:", err)
+			d.P("RSS fetch error:", err)
 			<-time.After(5 * time.Minute)
 			continue
 		}
@@ -62,7 +64,7 @@ func pollRSS() {
 	for {
 
 		if err := feed.FetchClient(rssurl, client, nil); err != nil {
-			P("RSS fetch error:", err)
+			d.P("RSS fetch error:", err)
 			<-time.After(5 * time.Minute)
 			continue
 		}
@@ -88,20 +90,20 @@ func checkIfThreadHasSingleMessage(link string) bool {
 		})()
 
 		if err != nil {
-			D("Could not get link", link, err)
+			d.D("Could not get link", link, err)
 			return
 		}
 
 		defer resp.Body.Close()
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			D("Error reading from the body of the link", link, err)
+			d.D("Error reading from the body of the link", link, err)
 			return
 		}
 
 		count := messagecountre.FindAllIndex(body, 2)
 		if len(count) == 0 {
-			D("Did not find the messagecountre regex in the link", link)
+			d.D("Did not find the messagecountre regex in the link", link)
 		} else if len(count) > 1 {
 			ret = false
 		}

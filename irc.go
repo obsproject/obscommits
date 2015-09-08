@@ -10,6 +10,7 @@ import (
 	"time"
 
 	irc "github.com/fluffle/goirc/client"
+	"github.com/sztanpet/obscommits/internal/debug"
 )
 
 type IRC struct {
@@ -114,7 +115,7 @@ func (srv *IRC) onDisconnect(c *irc.Conn, line *irc.Line) {
 func (srv *IRC) Connect() {
 	err := srv.Conn.Connect()
 	if err != nil {
-		D("Connection error:", err, "reconnecting in 30 seconds")
+		d.D("Connection error:", err, "reconnecting in 30 seconds")
 		<-time.After(30 * time.Second)
 		srv.Connect()
 	}

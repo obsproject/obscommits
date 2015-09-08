@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/sztanpet/obscommits/internal/debug"
 )
 
 const (
@@ -249,7 +251,7 @@ func (f *Factoidtpl) ensureFreshness() {
 	tpl, _ := f.basetpl.Clone()
 	tpl, err = tpl.ParseFiles("factoid.tpl")
 	if err != nil {
-		D("failed parsing file", err)
+		d.D("failed parsing file", err)
 	}
 
 	data := f.getFactoids()
@@ -301,7 +303,7 @@ func (f *Factoidtpl) checkTemplateChanged() {
 
 	info, err := os.Stat("factoid.tpl")
 	if err != nil {
-		D("Error stating factoid.tpl", err)
+		d.D("Error stating factoid.tpl", err)
 		return
 	}
 

@@ -9,6 +9,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/sztanpet/obscommits/internal/debug"
 )
 
 type sortableInt64 []int64
@@ -76,11 +78,11 @@ func (s *State) save() {
 	enc := gob.NewEncoder(b)
 	err := enc.Encode(s.data)
 	if err != nil {
-		D("Error encoding s:", err)
+		d.D("Error encoding s:", err)
 	}
 	err = ioutil.WriteFile(".state.dc", b.Bytes(), 0600)
 	if err != nil {
-		D("Error with writing out s file:", err)
+		d.D("Error with writing out s file:", err)
 	}
 }
 
@@ -89,7 +91,7 @@ func (s *State) load() {
 
 	contents, err := ioutil.ReadFile(".state.dc")
 	if err != nil {
-		D("Error while reading from state file")
+		d.D("Error while reading from state file")
 		return
 	}
 
@@ -98,7 +100,7 @@ func (s *State) load() {
 	err = dec.Decode(&s.data)
 
 	if err != nil {
-		D("Error decoding state, initializing", err)
+		d.D("Error decoding state, initializing", err)
 	}
 
 }
