@@ -17,7 +17,7 @@
   along with obscommits; If not, see <http://www.gnu.org/licenses/>.
 ***/
 
-package state
+package persist
 
 import (
 	"encoding/gob"
