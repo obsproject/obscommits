@@ -2,15 +2,18 @@ package main
 
 import (
 	"bytes"
+	"crypto/md5"
 	_ "crypto/sha512"
 	"crypto/tls"
 	rss "github.com/jteeuwen/go-pkg-rss"
 	"io/ioutil"
 	"net/http"
 	"regexp"
+	"sort"
 	"time"
 
 	"github.com/sztanpet/obscommits/internal/debug"
+	"github.com/sztanpet/obscommits/internal/persist"
 )
 
 var rssurl string
@@ -18,11 +21,57 @@ var (
 	messagecountre = regexp.MustCompile(`<li id="post\-\d+" class="sectionMain message`)
 	mantistitlere  = regexp.MustCompile(`^\d+: (.+)`)
 	forumauthorre  = regexp.MustCompile(`^.+@.+ \((.+)\)$`)
+	seenLinks      = map[[16]byte]int64{}
+	seenState      *persist.State
 )
 
+type sortableInt64 []int64
+
+func (a sortableInt64) Len() int           { return len(a) }
+func (a sortableInt64) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a sortableInt64) Less(i, j int) bool { return a[i] < a[j] }
+
 func initRSS() {
+	var err error
+	seenState, err = persist.New("rss.state", &seenLinks)
+
 	go pollRSS()
 	go pollMantis()
+}
+
+func seenGUID(id string) (ret bool) {
+	seenState.Lock()
+	hash := md5.Sum([]byte(id))
+
+	if _, ok := seenLinks[hash]; !ok {
+		seenLinks[hash] = time.Now().UTC().UnixNano()
+	} else {
+		ret = true
+	}
+
+	if len(seenLinks) > 2000 {
+		timestamps := make(sortableInt64, 0, len(seenLinks))
+		for _, ts := range seenLinks {
+			timestamps = append(timestamps, ts)
+		}
+
+		sort.Sort(timestamps)
+		timestamps = timestamps[:len(seenLinks)-1500]
+		for key, value := range seenLinks {
+
+			for _, ts := range timestamps {
+				if value == ts {
+					delete(seenLinks, key)
+					break
+				}
+			}
+
+		}
+	}
+
+	seenState.Unlock()
+	seenState.Save()
+	return
 }
 
 func pollMantis() {
@@ -122,7 +171,7 @@ func itemHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
 	b := bytes.NewBuffer(nil)
 
 	for _, item := range newitems {
-		if !state.addRssHash(*item.Guid) {
+		if seenGUID(*item.Guid) {
 			continue
 		}
 
@@ -156,7 +205,7 @@ func mantisRSSHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
 	b := bytes.NewBuffer(nil)
 
 	for _, item := range newitems {
-		if !state.addRssHash(*item.Guid) {
+		if seenGUID(*item.Guid) {
 			continue
 		}
 

@@ -85,13 +85,13 @@ var (
 
 func Init(ctx context.Context) context.Context {
 	s := struct {
-		factoids map[string]string
-		aliases  map[string]string
-		used     map[string]time.Time
+		Factoids map[string]string
+		Aliases  map[string]string
+		Used     map[string]time.Time
 	}{
-		factoids: factoids,
-		aliases:  aliases,
-		used:     used,
+		Factoids: factoids,
+		Aliases:  aliases,
+		Used:     used,
 	}
 
 	var err error
