@@ -38,14 +38,6 @@ func (s *State) init() {
 
 	s.load()
 
-	if s.data.Factoids == nil {
-		s.data.Factoids = make(map[string]string)
-	}
-
-	if s.data.Factoidaliases == nil {
-		s.data.Factoidaliases = make(map[string]string)
-	}
-
 	if s.data.Seenrss == nil {
 		s.data.Seenrss = make(map[string]int64)
 	}

@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/sztanpet/obscommits/internal/debug"
+	"github.com/sztanpet/obscommits/internal/persist"
+	"golang.org/x/net/context"
 )
 
 const (
@@ -75,9 +77,31 @@ var tags = map[string][]string{
 var (
 	urlre     = regexp.MustCompile(`https?://[^ ]+\.[^ ]+`)
 	controlre = regexp.MustCompile("([\x02\x03\x09\x13\x0f\x15\x1f\x16])(?:(\\d+)?(?:,(\\d+))?)?")
+	factoids  = map[string]string{}
+	aliases   = map[string]string{}
+	used      = map[string]time.Time{}
+	state     *persist.State
 )
 
-var usedfactoids = map[string]time.Time{}
+func Init(ctx context.Context) context.Context {
+	s := struct {
+		factoids map[string]string
+		aliases  map[string]string
+		used     map[string]time.Time
+	}{
+		factoids: factoids,
+		aliases:  aliases,
+		used:     used,
+	}
+
+	var err error
+	state, err = persist.New("factoids.state", &s)
+	if err != nil {
+		d.F(err.Error())
+	}
+
+	return ctx
+}
 
 type Factoid struct {
 	Name    string
@@ -271,26 +295,26 @@ func (f *Factoidtpl) getFactoids() []*Factoid {
 	state.Lock()
 	defer state.Unlock()
 
-	aliases := make(map[string][]string)
-	for alias, factoid := range state.data.Factoidaliases {
-		aliases[factoid] = append(aliases[factoid], alias)
+	a := make(map[string][]string)
+	for alias, factoid := range aliases {
+		a[factoid] = append(a[factoid], alias)
 	}
 
-	for _, a := range aliases {
-		sort.Strings(a)
+	for _, v := range a {
+		sort.Strings(v)
 	}
 
-	factoids := make([]*Factoid, 0, len(state.data.Factoids))
-	for name, text := range state.data.Factoids {
-		factoids = append(factoids, &Factoid{
+	fs := make([]*Factoid, 0, len(factoids))
+	for name, text := range factoids {
+		fs = append(fs, &Factoid{
 			Name:    name,
 			Text:    text,
-			Aliases: aliases[name],
+			Aliases: a[name],
 		})
 	}
 
-	sort.Sort(Factoids(factoids))
-	return factoids
+	sort.Sort(Factoids(fs))
+	return fs
 }
 
 func (f *Factoidtpl) checkTemplateChanged() {
@@ -326,10 +350,10 @@ func handleFactoidRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 func factoidUsedRecently(factoidkey string) (ret bool) {
-	if lastused, ok := usedfactoids[factoidkey]; ok && time.Since(lastused) < 30*time.Second {
+	if lastused, ok := used[factoidkey]; ok && time.Since(lastused) < 30*time.Second {
 		ret = true
 	}
-	usedfactoids[factoidkey] = time.Now()
+	used[factoidkey] = time.Now()
 	return
 }
 
@@ -339,10 +363,10 @@ func factoidUsedRecently(factoidkey string) (ret bool) {
 func getFactoidByKey(factoidkey string) (factoid, key string, ok bool) {
 	key = factoidkey
 restart:
-	if factoid, ok = state.data.Factoids[key]; ok {
+	if factoid, ok = factoids[key]; ok {
 		return
 	}
-	key, ok = state.data.Factoidaliases[key]
+	key, ok = aliases[key]
 	if ok {
 		goto restart
 	}
@@ -411,7 +435,7 @@ func tryHandleAdminFactoid(target, nick string, parts []string) (abort bool) {
 		state.Lock()
 		defer state.Unlock()
 
-		state.data.Factoids[factoidkey] = factoid
+		factoids[factoidkey] = factoid
 		savestate = true
 		srv.notice(nick, "Added/Modified successfully")
 
@@ -420,16 +444,16 @@ func tryHandleAdminFactoid(target, nick string, parts []string) (abort bool) {
 		defer state.Unlock()
 
 	restartdelete:
-		if _, ok := state.data.Factoids[factoidkey]; ok {
-			delete(state.data.Factoids, factoidkey)
+		if _, ok := factoids[factoidkey]; ok {
+			delete(factoids, factoidkey)
 			srv.notice(nick, "Deleted successfully")
 			// clean up the aliases too
-			for k, v := range state.data.Factoidaliases {
+			for k, v := range aliases {
 				if v == factoidkey {
-					delete(state.data.Factoidaliases, k)
+					delete(aliases, k)
 				}
 			}
-		} else if factoidkey, ok = state.data.Factoidaliases[factoidkey]; ok {
+		} else if factoidkey, ok = aliases[factoidkey]; ok {
 			srv.notice(nick, "Found an alias, deleting the original factoid")
 			goto restartdelete
 		}
@@ -443,21 +467,21 @@ func tryHandleAdminFactoid(target, nick string, parts []string) (abort bool) {
 		state.Lock()
 		defer state.Unlock()
 
-		if _, ok := state.data.Factoids[newfactoidkey]; ok {
+		if _, ok := factoids[newfactoidkey]; ok {
 			srv.notice(nick, "Renaming would overwrite, please delete first")
 			return
 		}
-		if _, ok := state.data.Factoidaliases[newfactoidkey]; ok {
+		if _, ok := aliases[newfactoidkey]; ok {
 			srv.notice(nick, "Renaming would overwrite an alias, please delete first")
 			return
 		}
-		if _, ok := state.data.Factoids[factoidkey]; ok {
-			state.data.Factoids[newfactoidkey] = state.data.Factoids[factoidkey]
-			delete(state.data.Factoids, factoidkey)
+		if _, ok := factoids[factoidkey]; ok {
+			factoids[newfactoidkey] = factoids[factoidkey]
+			delete(factoids, factoidkey)
 			// rename the aliases too
-			for k, v := range state.data.Factoidaliases {
+			for k, v := range aliases {
 				if v == factoidkey {
-					state.data.Factoidaliases[k] = newfactoidkey
+					aliases[k] = newfactoidkey
 				}
 			}
 			savestate = true
@@ -480,7 +504,7 @@ func tryHandleAdminFactoid(target, nick string, parts []string) (abort bool) {
 		// getFactoidByKey does
 		_, newfactoidkey, ok := getFactoidByKey(newfactoidkey)
 		if ok {
-			state.data.Factoidaliases[factoidkey] = newfactoidkey
+			aliases[factoidkey] = newfactoidkey
 			savestate = true
 			srv.notice(nick, "Added/Modified alias for ", newfactoidkey, " successfully")
 		} else {
@@ -491,9 +515,9 @@ func tryHandleAdminFactoid(target, nick string, parts []string) (abort bool) {
 		state.Lock()
 		defer state.Unlock()
 
-		if _, ok := state.data.Factoidaliases[factoidkey]; ok {
+		if _, ok := aliases[factoidkey]; ok {
 			srv.notice(nick, "Deleted alias successfully")
-			delete(state.data.Factoidaliases, factoidkey)
+			delete(aliases, factoidkey)
 			savestate = true
 		}
 
@@ -503,7 +527,7 @@ func tryHandleAdminFactoid(target, nick string, parts []string) (abort bool) {
 	}
 
 	if savestate {
-		state.save()
+		state.Save()
 		factoidtpl.invalidate()
 	}
 

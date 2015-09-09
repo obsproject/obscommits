@@ -11,7 +11,7 @@ import (
 
 	irc "github.com/fluffle/goirc/client"
 	"github.com/sztanpet/obscommits/internal/debug"
-	st "github.com/sztanpet/obscommits/internal/state"
+	"github.com/sztanpet/obscommits/internal/persist"
 )
 
 type IRC struct {
@@ -23,7 +23,7 @@ type IRC struct {
 
 var srv = IRC{}
 var (
-	adminState *st.State
+	adminState *persist.State
 	admins     map[string]struct{}
 )
 var (
@@ -32,7 +32,7 @@ var (
 
 func initIRC(addr string) {
 	var err error
-	adminState, err = st.New("admins.state", &map[string]struct{}{
+	adminState, err = persist.New("admins.state", &map[string]struct{}{
 		"melkor":                       struct{}{},
 		"sztanpet.users.quakenet.org":  struct{}{},
 		"R1CH.users.quakenet.org":      struct{}{},
