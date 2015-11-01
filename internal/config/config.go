@@ -104,11 +104,11 @@ ident="obscommits"
 username="http://obscommits.sztanpet.net/"
 nick="OBScommits"
 password=""
-channels=["#obs-dev", "#obscommits"]
+channels=["#obs-dev", "#obsproject"]
 
 [rss]
 forumurl="https://obsproject.com/forum/list/-/index.rss?order=post_date"
-forumchan="#obscommits"
+forumchan="#obsproject"
 mantisurl="https://obsproject.com/mantis/issues_rss.php?"
 mantischan="#obs-dev"
 `

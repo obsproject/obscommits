@@ -88,7 +88,7 @@ func getFormatStr(numargs int, addlineinfo bool) string {
 }
 
 func logWithCaller(file string, line int, args ...interface{}) {
-	pos := strings.LastIndex(file, "sd-bot/") + len("sd-bot/")
+	pos := strings.LastIndex(file, "obscommits/") + len("obscommits/")
 	newargs := make([]interface{}, 0, len(args)+2)
 	newargs = append(newargs, file[pos:], line)
 	newargs = append(newargs, args...)
@@ -117,7 +117,7 @@ func DF(skip int, format string, args ...interface{}) {
 
 	_, file, line, ok := runtime.Caller(skip)
 	if ok {
-		pos := strings.LastIndex(file, "sd-bot/") + len("sd-bot/")
+		pos := strings.LastIndex(file, "obscommits/") + len("obscommits/")
 		newargs := make([]interface{}, 0, len(args)+2)
 		newargs = append(newargs, file[pos:], line)
 		newargs = append(newargs, args...)
@@ -142,7 +142,7 @@ func P(args ...interface{}) {
 func PF(skip int, format string, args ...interface{}) {
 	_, file, line, ok := runtime.Caller(skip)
 	if ok {
-		pos := strings.LastIndex(file, "sd-bot/") + len("sd-bot/")
+		pos := strings.LastIndex(file, "obscommits/") + len("obscommits/")
 		newargs := make([]interface{}, 0, len(args)+2)
 		newargs = append(newargs, file[pos:], line)
 		newargs = append(newargs, args...)
