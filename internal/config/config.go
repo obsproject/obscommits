@@ -99,10 +99,10 @@ hookpath="somethingrandom"
 announcechan="#obs-dev"
 
 [irc]
-addr="irc.freenode.net:6667"
+addr="irc.quakenet.org:6667"
 ident="obscommits"
 username="http://obscommits.sztanpet.net/"
-nick="obscommits"
+nick="OBScommits"
 password=""
 channels=["#obs-dev", "#obscommits"]
 
