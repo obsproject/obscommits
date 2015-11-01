@@ -44,12 +44,12 @@ func New(p string, d interface{}) (*State, error) {
 	f, err := os.OpenFile(ret.path, os.O_RDONLY, 0600)
 	if !os.IsNotExist(err) {
 		err := ret.load(f)
-		ret.close(f)
+		ret.close(f, true)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		ret.close(f)
+		ret.close(f, true)
 	}
 
 	err = ret.Save()
@@ -84,11 +84,16 @@ func (s *State) load(f *os.File) error {
 	return nil
 }
 
-func (s *State) Save() error {
-	s.Lock()
+func (s *State) Save(lock ...bool) error {
+	var needLock bool
+	if len(lock) == 0 || lock[0] {
+		needLock = true
+		s.Lock()
+	}
+
 	tmpPath := s.path + ".tmp"
 	f, err := os.OpenFile(tmpPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
-	defer s.close(f)
+	defer s.close(f, needLock)
 
 	if err != nil {
 		return err
@@ -108,8 +113,11 @@ func (s *State) Save() error {
 	return nil
 }
 
-func (s *State) close(f *os.File) {
-	s.Unlock()
+func (s *State) close(f *os.File, needUnlock bool) {
+	if needUnlock {
+		s.Unlock()
+	}
+
 	if f != nil {
 		_ = f.Close()
 	}

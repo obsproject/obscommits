@@ -22,83 +22,95 @@ package config
 import (
 	"flag"
 	"io"
+	"io/ioutil"
 	"os"
+	"path/filepath"
 
-	"code.google.com/p/gcfg"
+	"github.com/naoina/toml"
 	"golang.org/x/net/context"
 )
 
 type Website struct {
-	Addr string
+	Addr string `toml:"addr"`
+}
+
+type Analyzer struct {
+	URL string `toml:"url"`
 }
 
 type Factoids struct {
-	HookPath string
-	TplPath  string
+	HookPath string `toml:"hookpath"`
+	TplPath  string `toml:"tplpath"`
 }
 
 type Debug struct {
-	Debug   bool
-	Logfile string
+	Debug   bool   `toml:"debug"`
+	Logfile string `toml:"logfile"`
 }
 
 type Github struct {
-	HookPath string
-	TplPath  string
+	HookPath     string `toml:"hookpath"`
+	AnnounceChan string `toml:"announcechan"`
 }
 
 type IRC struct {
-	Addr     string
-	Ident    string
-	Nick     string
-	UserName string
-	Password string
-	Channels []string
+	Addr     string   `toml:"addr"`
+	Ident    string   `toml:"ident"`
+	Nick     string   `toml:"nick"`
+	UserName string   `toml:"username"`
+	Password string   `toml:"password"`
+	Channels []string `toml:"channels"`
 }
 
 type RSS struct {
-	ForumURL  string
-	MantisURL string
+	ForumURL   string `toml:"forumurl"`
+	ForumChan  string `toml:"forumchan"`
+	MantisURL  string `toml:"mantisurl"`
+	MantisChan string `toml:"mantischan"`
 }
 
 type AppConfig struct {
 	Website
-	Factoids
 	Debug
+	Factoids
+	Analyzer
 	Github
-	IRC
-	RSS
+	IRC `toml:"irc"`
+	RSS `toml:"rss"`
 }
 
-var settingsFile = flag.String("config", "settings.cfg", `path to the config file, it it doesn't exist it will
-		be created with default values`)
+var settingsFile *string
 
 const sampleconf = `[website]
-addr=:80
+addr=":80"
 
 [debug]
-debug=no
-logfile=logs/debug.txt
+debug=false
+logfile="logs/debug.txt"
 
 [factoids]
-hookpath=/factoids
+hookpath="/"
+
+[analyzer]
+url="http://obsproject.com/analyzer?"
 
 [github]
-hookpath=somethingrandom
-tplpath=tpl/github.tpl
+hookpath="somethingrandom"
+announcechan="#obs-dev"
 
 [irc]
-addr=irc.freenode.net:6667
-ident=obscommits
-username=http://obscommits.sztanpet.net/
-nick=obscommits
-password=
-channels=#obs-dev
-channels=#obscommits
+addr="irc.freenode.net:6667"
+ident="obscommits"
+username="http://obscommits.sztanpet.net/"
+nick="obscommits"
+password=""
+channels=["#obs-dev", "#obscommits"]
 
 [rss]
-forumurl=https://obsproject.com/forum/list/-/index.rss?order=post_date
-mantisurl=https://obsproject.com/mantis/issues_rss.php?
+forumurl="https://obsproject.com/forum/list/-/index.rss?order=post_date"
+forumchan="#obscommits"
+mantisurl="https://obsproject.com/mantis/issues_rss.php?"
+mantischan="#obs-dev"
 `
 
 var contextKey *int
@@ -108,7 +120,10 @@ func init() {
 }
 
 func Init(ctx context.Context) context.Context {
+	settingsFile = flag.String("config", "settings.cfg", `path to the config file, it it doesn't exist it will
+			be created with default values`)
 	flag.Parse()
+
 	f, err := os.OpenFile(*settingsFile, os.O_CREATE|os.O_RDWR, 0660)
 	if err != nil {
 		panic("Could not open " + *settingsFile + " err: " + err.Error())
@@ -121,20 +136,49 @@ func Init(ctx context.Context) context.Context {
 		f.Seek(0, 0)
 	}
 
-	cfg := ReadConfig(f)
-	return context.WithValue(ctx, contextKey, cfg)
-}
-
-func ReadConfig(f *os.File) *AppConfig {
-	ret := &AppConfig{}
-	if err := gcfg.ReadInto(ret, f); err != nil {
+	cfg := &AppConfig{}
+	if err := ReadConfig(f, cfg); err != nil {
 		panic("Failed to parse config file, err: " + err.Error())
 	}
 
-	return ret
+	return context.WithValue(ctx, contextKey, cfg)
 }
 
-func GetFromContext(ctx context.Context) *AppConfig {
+func ReadConfig(r io.Reader, d interface{}) error {
+	dec := toml.NewDecoder(r)
+	return dec.Decode(d)
+}
+
+func WriteConfig(w io.Writer, d interface{}) error {
+	enc := toml.NewEncoder(w)
+	return enc.Encode(d)
+}
+
+func Save(ctx context.Context) error {
+	return SafeSave(*settingsFile, *FromContext(ctx))
+}
+
+func SafeSave(file string, data interface{}) error {
+	dir, err := filepath.Abs(filepath.Dir(file))
+	if err != nil {
+		return err
+	}
+
+	f, err := ioutil.TempFile(dir, "tmpconf-")
+	if err != nil {
+		return err
+	}
+
+	err = WriteConfig(f, data)
+	if err != nil {
+		return err
+	}
+	_ = f.Close()
+
+	return os.Rename(f.Name(), file)
+}
+
+func FromContext(ctx context.Context) *AppConfig {
 	cfg, _ := ctx.Value(contextKey).(*AppConfig)
 	return cfg
 }

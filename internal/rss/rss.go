@@ -1,28 +1,54 @@
-package main
+/***
+  This file is part of obscommits.
+
+  Copyright (c) 2015 Peter Sztan <sztanpet@gmail.com>
+
+  obscommits is free software; you can redistribute it and/or modify it
+  under the terms of the GNU Lesser General Public License as published by
+  the Free Software Foundation; either version 3 of the License, or
+  (at your option) any later version.
+
+  obscommits is distributed in the hope that it will be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+  Lesser General Public License for more details.
+
+  You should have received a copy of the GNU Lesser General Public License
+  along with obscommits; If not, see <http://www.gnu.org/licenses/>.
+***/
+
+package rss
 
 import (
 	"bytes"
 	"crypto/md5"
 	_ "crypto/sha512"
 	"crypto/tls"
-	rss "github.com/jteeuwen/go-pkg-rss"
 	"io/ioutil"
 	"net/http"
 	"regexp"
 	"sort"
 	"time"
 
+	rss "github.com/jteeuwen/go-pkg-rss"
+	"github.com/sztanpet/obscommits/internal/config"
 	"github.com/sztanpet/obscommits/internal/debug"
+	"github.com/sztanpet/obscommits/internal/irc"
 	"github.com/sztanpet/obscommits/internal/persist"
+	"github.com/sztanpet/obscommits/internal/tpl"
+	"golang.org/x/net/context"
 )
 
-var rssurl string
 var (
 	messagecountre = regexp.MustCompile(`<li id="post\-\d+" class="sectionMain message`)
 	mantistitlere  = regexp.MustCompile(`^\d+: (.+)`)
 	forumauthorre  = regexp.MustCompile(`^.+@.+ \((.+)\)$`)
 	seenLinks      = map[[16]byte]int64{}
-	seenState      *persist.State
+	state          *persist.State
+
+	tmpl *tpl.Tpl
+	srv  *irc.IConn
+	cfg  config.RSS
 )
 
 type sortableInt64 []int64
@@ -31,16 +57,27 @@ func (a sortableInt64) Len() int           { return len(a) }
 func (a sortableInt64) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a sortableInt64) Less(i, j int) bool { return a[i] < a[j] }
 
-func initRSS() {
+func Init(ctx context.Context) context.Context {
 	var err error
-	seenState, err = persist.New("rss.state", &seenLinks)
+	state, err = persist.New("rss.state", &seenLinks)
+	if err != nil {
+		d.F(err.Error())
+	}
+
+	seenLinks = *state.Get().(*map[[16]byte]int64)
+
+	cfg = config.FromContext(ctx).RSS
+	srv = irc.FromContext(ctx)
+	tmpl = tpl.FromContext(ctx)
 
 	go pollRSS()
 	go pollMantis()
+
+	return ctx
 }
 
 func seenGUID(id string) (ret bool) {
-	seenState.Lock()
+	state.Lock()
 	hash := md5.Sum([]byte(id))
 
 	if _, ok := seenLinks[hash]; !ok {
@@ -69,8 +106,8 @@ func seenGUID(id string) (ret bool) {
 		}
 	}
 
-	seenState.Unlock()
-	seenState.Save()
+	state.Unlock()
+	state.Save()
 	return
 }
 
@@ -87,7 +124,7 @@ func pollMantis() {
 
 	for {
 
-		if err := feed.FetchClient("https://obsproject.com/mantis/issues_rss.php?", client, nil); err != nil {
+		if err := feed.FetchClient(cfg.MantisURL, client, nil); err != nil {
 			d.P("RSS fetch error:", err)
 			<-time.After(5 * time.Minute)
 			continue
@@ -103,7 +140,7 @@ func pollRSS() {
 	client := &http.Client{
 		Timeout: 5 * time.Second,
 	}
-	if len(rssurl) > 8 && rssurl[:8] == "https://" {
+	if len(cfg.ForumURL) > 8 && cfg.ForumURL[:8] == "https://" {
 		client.Transport = &http.Transport{
 			TLSClientConfig:       &tls.Config{},
 			ResponseHeaderTimeout: time.Second,
@@ -112,7 +149,7 @@ func pollRSS() {
 
 	for {
 
-		if err := feed.FetchClient(rssurl, client, nil); err != nil {
+		if err := feed.FetchClient(cfg.ForumURL, client, nil); err != nil {
 			d.P("RSS fetch error:", err)
 			<-time.After(5 * time.Minute)
 			continue
@@ -187,12 +224,11 @@ func itemHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
 		}
 
 		b.Reset()
-		tmpl.execute(b, "rss", item)
+		tmpl.Execute(b, "rss", item)
 		items = append(items, b.String())
 	}
 
-	go srv.handleLines("#obsproject", items, false)
-
+	go srv.WriteLines(cfg.ForumChan, items, false)
 }
 
 func mantisRSSHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
@@ -215,10 +251,9 @@ func mantisRSSHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
 		}
 
 		b.Reset()
-		tmpl.execute(b, "mantisissue", item)
+		tmpl.Execute(b, "mantisissue", item)
 		items = append(items, b.String())
 	}
 
-	go srv.handleLines("#obs-dev", items, false)
-
+	go srv.WriteLines(cfg.MantisChan, items, false)
 }

@@ -1,4 +1,23 @@
-package main
+/***
+  This file is part of obscommits.
+
+  Copyright (c) 2015 Peter Sztan <sztanpet@gmail.com>
+
+  obscommits is free software; you can redistribute it and/or modify it
+  under the terms of the GNU Lesser General Public License as published by
+  the Free Software Foundation; either version 3 of the License, or
+  (at your option) any later version.
+
+  obscommits is distributed in the hope that it will be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+  Lesser General Public License for more details.
+
+  You should have received a copy of the GNU Lesser General Public License
+  along with obscommits; If not, see <http://www.gnu.org/licenses/>.
+***/
+
+package github
 
 import (
 	"bytes"
@@ -6,13 +25,27 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/sztanpet/obscommits/internal/config"
 	"github.com/sztanpet/obscommits/internal/debug"
+	"github.com/sztanpet/obscommits/internal/irc"
+	"github.com/sztanpet/obscommits/internal/tpl"
+	"golang.org/x/net/context"
 )
 
 const maxLines = 5
 
-func initGithub(hookpath string) {
-	http.HandleFunc(hookpath, func(w http.ResponseWriter, r *http.Request) {
+var (
+	srv  *irc.IConn
+	tmpl *tpl.Tpl
+	cfg  config.Github
+)
+
+func Init(ctx context.Context) context.Context {
+	srv = irc.FromContext(ctx)
+	tmpl = tpl.FromContext(ctx)
+	cfg = config.FromContext(ctx).Github
+
+	http.HandleFunc(cfg.HookPath, func(w http.ResponseWriter, r *http.Request) {
 		switch r.Header.Get("X-Github-Event") {
 		case "push":
 			pushHandler(r)
@@ -24,6 +57,8 @@ func initGithub(hookpath string) {
 			issueHandler(r)
 		}
 	})
+
+	return ctx
 }
 
 func handlePayload(r *http.Request, data interface{}) error {
@@ -39,6 +74,7 @@ func handlePayload(r *http.Request, data interface{}) error {
 func pushHandler(r *http.Request) {
 	var data struct {
 		Ref     string
+		Before  string
 		Commits []struct {
 			Author struct {
 				Username string
@@ -70,6 +106,9 @@ func pushHandler(r *http.Request) {
 		return
 	}
 
+	// if we want to print more than 5 lines, just print two lines, one line
+	// announcing that commits are skipped with a compare view of the commits
+	// and the last line, usually a merge commit
 	needSkip := len(data.Commits) > maxLines
 
 	for k, v := range data.Commits {
@@ -81,23 +120,23 @@ func pushHandler(r *http.Request) {
 
 		b.Reset()
 		if needSkip && k == len(data.Commits)-2 {
-			tmpl.execute(b, "pushSkipped", &struct {
+			tmpl.Execute(b, "pushSkipped", &struct {
 				Author    string // commits[i].author.username
-				FromID    string // commits[0].id
+				FromID    string // .before
 				ToID      string // commits[len - 2].id
 				SkipCount int
 				Repo      string // repository.name
 				RepoURL   string // repository.url
 			}{
 				Author:    v.Author.Username,
-				FromID:    data.Commits[0].Id,
+				FromID:    data.Before,
 				ToID:      v.Id,
-				SkipCount: len(data.Commits) - 2,
+				SkipCount: len(data.Commits) - 1,
 				Repo:      repo,
 				RepoURL:   repourl,
 			})
-		} else if !needSkip || k > len(data.Commits)-maxLines {
-			tmpl.execute(b, "push", &struct {
+		} else if !needSkip || k > len(data.Commits)-2 {
+			tmpl.Execute(b, "push", &struct {
 				Author  string // commits[i].author.username
 				Url     string // commits[i].url
 				Message string // commits[i].message
@@ -121,7 +160,7 @@ func pushHandler(r *http.Request) {
 		lines = append(lines, b.String())
 	}
 
-	go srv.handleLines("#obs-dev", lines, true)
+	go srv.WriteLines(cfg.AnnounceChan, lines, true)
 }
 
 func prHandler(r *http.Request) {
@@ -147,7 +186,7 @@ func prHandler(r *http.Request) {
 	}
 
 	b := bytes.NewBuffer(nil)
-	tmpl.execute(b, "pr", &struct {
+	tmpl.Execute(b, "pr", &struct {
 		Author string
 		Title  string
 		Url    string
@@ -157,7 +196,7 @@ func prHandler(r *http.Request) {
 		Url:    data.Pull_request.Html_url,
 	})
 
-	go srv.handleLines("#obs-dev", []string{b.String()}, true)
+	go srv.WriteLines(cfg.AnnounceChan, []string{b.String()}, true)
 }
 
 func wikiHandler(r *http.Request) {
@@ -184,7 +223,7 @@ func wikiHandler(r *http.Request) {
 	for _, v := range data.Pages {
 
 		b.Reset()
-		tmpl.execute(b, "wiki", &struct {
+		tmpl.Execute(b, "wiki", &struct {
 			Author string
 			Page   string
 			Url    string
@@ -204,7 +243,7 @@ func wikiHandler(r *http.Request) {
 		lines = lines[l-5:]
 	}
 
-	go srv.handleLines("#obs-dev", lines, true)
+	go srv.WriteLines(cfg.AnnounceChan, lines, true)
 }
 
 func issueHandler(r *http.Request) {
@@ -230,7 +269,7 @@ func issueHandler(r *http.Request) {
 	}
 
 	b := bytes.NewBuffer(nil)
-	tmpl.execute(b, "issues", &struct {
+	tmpl.Execute(b, "issues", &struct {
 		Author string
 		Title  string
 		Url    string
@@ -240,5 +279,5 @@ func issueHandler(r *http.Request) {
 		Url:    data.Issue.Html_url,
 	})
 
-	go srv.handleLines("#obs-dev", []string{b.String()}, true)
+	go srv.WriteLines(cfg.AnnounceChan, []string{b.String()}, true)
 }

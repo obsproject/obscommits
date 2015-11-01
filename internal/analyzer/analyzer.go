@@ -1,4 +1,23 @@
-package main
+/***
+  This file is part of obscommits.
+
+  Copyright (c) 2015 Peter Sztan <sztanpet@gmail.com>
+
+  obscommits is free software; you can redistribute it and/or modify it
+  under the terms of the GNU Lesser General Public License as published by
+  the Free Software Foundation; either version 3 of the License, or
+  (at your option) any later version.
+
+  obscommits is distributed in the hope that it will be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+  Lesser General Public License for more details.
+
+  You should have received a copy of the GNU Lesser General Public License
+  along with obscommits; If not, see <http://www.gnu.org/licenses/>.
+***/
+
+package analyzer
 
 import (
 	"fmt"
@@ -8,20 +27,29 @@ import (
 	"regexp"
 	"sync"
 
+	"github.com/sztanpet/obscommits/internal/config"
 	"github.com/sztanpet/obscommits/internal/debug"
+	"github.com/sztanpet/obscommits/internal/irc"
+	"golang.org/x/net/context"
 )
 
 var (
 	loglinkre  = regexp.MustCompile(`pastebin\.com/[a-zA-Z0-9]+|gist\.github\.com/(?:anonymous/)?([a-f0-9]+)`)
 	analyzerre = regexp.MustCompile(`id="analyzer\-summary" data\-major\-issues="(\d+)" data\-minor\-issues="(\d+)">`)
+	anurl      string
 )
 
-func tryHandleAnalyzer(target, nick, message string) (abort bool) {
-	if !loglinkre.MatchString(message) {
+func Init(ctx context.Context) context.Context {
+	anurl = config.FromContext(ctx).Analyzer.URL
+	return ctx
+}
+
+func Handle(c *irc.IConn, m *irc.Message) (abort bool) {
+	if !loglinkre.MatchString(m.Trailing) {
 		return
 	}
 
-	links := loglinkre.FindAllStringSubmatch(message, 4)
+	links := loglinkre.FindAllStringSubmatch(m.Trailing, 4)
 	var wg sync.WaitGroup
 	linechan := make(chan string, len(links))
 	query := url.Values{}
@@ -37,9 +65,9 @@ func tryHandleAnalyzer(target, nick, message string) (abort bool) {
 		} else {
 			query.Set("url", v[0])
 		}
-		url := "http://obsproject.com/analyzer?" + query.Encode()
+		url := anurl + query.Encode()
 		wg.Add(1)
-		go analyzePastebin(url, nick, linechan, &wg)
+		go analyzePastebin(url, m.Prefix.Name, linechan, &wg)
 	}
 
 	go func() {
@@ -54,7 +82,8 @@ func tryHandleAnalyzer(target, nick, message string) (abort bool) {
 			}
 		}
 	end:
-		srv.handleLines(target, lines, false)
+		target := c.Target(m)
+		c.WriteLines(target, lines, false)
 	}()
 
 	return true

@@ -49,7 +49,7 @@ var (
 
 // Init initializes the printing of debugging information based on its arg
 func Init(ctx context.Context) context.Context {
-	cfg := config.GetFromContext(ctx)
+	cfg := config.FromContext(ctx)
 
 	mu.Lock()
 	debuggingEnabled = cfg.Debug.Debug

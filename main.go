@@ -22,37 +22,32 @@ package main
 import (
 	"net/http"
 
+	"github.com/sztanpet/obscommits/internal/analyzer"
 	"github.com/sztanpet/obscommits/internal/config"
 	"github.com/sztanpet/obscommits/internal/debug"
+	"github.com/sztanpet/obscommits/internal/factoids"
+	"github.com/sztanpet/obscommits/internal/github"
+	"github.com/sztanpet/obscommits/internal/rss"
+	"github.com/sztanpet/obscommits/internal/tpl"
 	"golang.org/x/net/context"
 )
 
 var debuggingenabled = true
-var state State
-var tmpl Template
 
 func main() {
 	ctx := context.Background()
 	ctx = config.Init(ctx)
 	ctx = d.Init(ctx)
+	ctx = tpl.Init(ctx)
+	ctx = analyzer.Init(ctx)
+	ctx = initIRC(ctx)
+	ctx = factoids.Init(ctx)
+	ctx = rss.Init(ctx)
+	ctx = github.Init(ctx)
 
-	cfg := config.GetFromContext(ctx)
-	debuggingenabled = cfg.Debug.Debug
-	ircaddr := cfg.IRC.Addr
-	listenaddr := cfg.Website.Addr
-	githookpath := cfg.Github.HookPath
-	factoidhookpath := cfg.Factoids.HookPath
-	rssurl = cfg.RSS.ForumURL
+	cfg := config.FromContext(ctx).Website
 
-	state.init()
-	tmpl.init()
-	initIRC(ircaddr)
-
-	initRSS()
-	initFactoids(factoidhookpath)
-	initGithub(githookpath)
-
-	if err := http.ListenAndServe(listenaddr, nil); err != nil {
+	if err := http.ListenAndServe(cfg.Addr, nil); err != nil {
 		d.F("ListenAndServe:", err)
 	}
 }
