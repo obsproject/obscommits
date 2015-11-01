@@ -153,11 +153,11 @@ func pushHandler(r *http.Request) {
 				RepoURL: repourl,
 				Branch:  branch,
 			})
-		} else {
-			continue
 		}
 
-		lines = append(lines, b.String())
+		if b.Len() > 0 {
+			lines = append(lines, b.String())
+		}
 	}
 
 	go srv.WriteLines(cfg.AnnounceChan, lines, true)
