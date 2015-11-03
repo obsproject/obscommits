@@ -79,13 +79,13 @@ func pushHandler(r *http.Request) {
 			Author struct {
 				Username string
 			}
-			Url     string
+			URL     string
 			Message string
 			Id      string
 		}
 		Repository struct {
 			Name string
-			Url  string
+			URL  string
 		}
 	}
 
@@ -99,7 +99,7 @@ func pushHandler(r *http.Request) {
 	branch := data.Ref[pos:]
 	lines := make([]string, 0, 5)
 	repo := data.Repository.Name
-	repourl := data.Repository.Url
+	repoURL := data.Repository.URL
 	b := bytes.NewBuffer(nil)
 
 	if branch != "master" {
@@ -126,31 +126,31 @@ func pushHandler(r *http.Request) {
 				ToID      string // commits[len - 2].id
 				SkipCount int
 				Repo      string // repository.name
-				RepoURL   string // repository.url
+				RepoURL   string // repository.URL
 			}{
 				Author:    v.Author.Username,
 				FromID:    data.Before,
 				ToID:      v.Id,
 				SkipCount: len(data.Commits) - 1,
 				Repo:      repo,
-				RepoURL:   repourl,
+				RepoURL:   repoURL,
 			})
 		} else if !needSkip || k > len(data.Commits)-2 {
 			tmpl.Execute(b, "push", &struct {
 				Author  string // commits[i].author.username
-				Url     string // commits[i].url
+				URL     string // commits[i].URL
 				Message string // commits[i].message
 				ID      string // commits[i].id
 				Repo    string // repository.name
-				RepoURL string // repository.url
+				RepoURL string // repository.URL
 				Branch  string // .ref the part after refs/heads/
 			}{
 				Author:  v.Author.Username,
-				Url:     v.Url,
+				URL:     v.URL,
 				Message: firstline,
 				ID:      v.Id,
 				Repo:    repo,
-				RepoURL: repourl,
+				RepoURL: repoURL,
 				Branch:  branch,
 			})
 		}
@@ -167,7 +167,7 @@ func prHandler(r *http.Request) {
 	var data struct {
 		Action       string
 		Pull_request struct {
-			Html_url string
+			Html_URL string
 			Title    string
 			User     struct {
 				Login string
@@ -189,11 +189,11 @@ func prHandler(r *http.Request) {
 	tmpl.Execute(b, "pr", &struct {
 		Author string
 		Title  string
-		Url    string
+		URL    string
 	}{
 		Author: data.Pull_request.User.Login,
 		Title:  data.Pull_request.Title,
-		Url:    data.Pull_request.Html_url,
+		URL:    data.Pull_request.Html_URL,
 	})
 
 	go srv.WriteLines(cfg.AnnounceChan, []string{b.String()}, true)
@@ -205,7 +205,7 @@ func wikiHandler(r *http.Request) {
 			Page_name string
 			Action    string
 			Sha       string
-			Html_url  string
+			Html_URL  string
 		}
 		Sender struct {
 			Login string
@@ -226,13 +226,13 @@ func wikiHandler(r *http.Request) {
 		tmpl.Execute(b, "wiki", &struct {
 			Author string
 			Page   string
-			Url    string
+			URL    string
 			Action string
 			Sha    string
 		}{
 			Author: data.Sender.Login,
 			Page:   v.Page_name,
-			Url:    v.Html_url,
+			URL:    v.Html_URL,
 			Action: v.Action,
 			Sha:    v.Sha,
 		})
@@ -251,7 +251,7 @@ func issueHandler(r *http.Request) {
 		Action string
 		Issue  struct {
 			Title    string
-			Html_url string
+			Html_URL string
 			User     struct {
 				Login string
 			}
@@ -272,11 +272,11 @@ func issueHandler(r *http.Request) {
 	tmpl.Execute(b, "issues", &struct {
 		Author string
 		Title  string
-		Url    string
+		URL    string
 	}{
 		Author: data.Issue.User.Login,
 		Title:  data.Issue.Title,
-		Url:    data.Issue.Html_url,
+		URL:    data.Issue.Html_URL,
 	})
 
 	go srv.WriteLines(cfg.AnnounceChan, []string{b.String()}, true)

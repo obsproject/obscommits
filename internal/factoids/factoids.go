@@ -32,25 +32,17 @@ import (
 	"golang.org/x/net/context"
 )
 
-type factoid struct {
-	Name    string
-	Text    string
-	Aliases []string
+type st struct {
+	Factoids map[string]string
+	Aliases  map[string]string
+	Used     map[string]time.Time
 }
-
-type factoidSlice []factoid
-
-func (f factoidSlice) Len() int           { return len(f) }
-func (f factoidSlice) Less(i, j int) bool { return f[i].Name < f[j].Name }
-func (f factoidSlice) Swap(i, j int)      { f[i], f[j] = f[j], f[i] }
 
 var (
 	alphaRE  = regexp.MustCompile(`^[a-zA-Z0-9-.]+$`)
 	handleRE = regexp.MustCompile(`^!([a-zA-Z0-9-.]+)(?:\s+(\S+)\s*)?$`)
 	adminRE  = regexp.MustCompile(`^\.(add|mod|del|rename|addalias|modalias|delalias)(?:\s+([a-zA-Z0-9-.]+)\s*)(?:(\S+))?(?:(.+))?$`)
-	factoids = map[string]string{}
-	aliases  = map[string]string{}
-	used     = map[string]time.Time{}
+	s        *st
 	state    *persist.State
 )
 
@@ -58,26 +50,17 @@ func Init(ctx context.Context) context.Context {
 	handleRE.Longest()
 	adminRE.Longest()
 
-	type s struct {
-		Factoids map[string]string
-		Aliases  map[string]string
-		Used     map[string]time.Time
-	}
-
 	var err error
-	state, err = persist.New("factoids.state", &s{
-		Factoids: factoids,
-		Aliases:  aliases,
-		Used:     used,
+	state, err = persist.New("factoids.state", &st{
+		Factoids: map[string]string{},
+		Aliases:  map[string]string{},
+		Used:     map[string]time.Time{},
 	})
 	if err != nil {
 		d.F(err.Error())
 	}
 
-	st := state.Get().(*s)
-	factoids = st.Factoids
-	aliases = st.Aliases
-	used = st.Used
+	s = state.Get().(*st)
 
 	tpl.init()
 	path := config.FromContext(ctx).Factoids.HookPath
@@ -90,10 +73,10 @@ func Init(ctx context.Context) context.Context {
 }
 
 func factoidUsedRecently(factoidkey string) (ret bool) {
-	if lastused, ok := used[factoidkey]; ok && time.Since(lastused) < 30*time.Second {
+	if lastused, ok := s.Used[factoidkey]; ok && time.Since(lastused) < 30*time.Second {
 		ret = true
 	}
-	used[factoidkey] = time.Now()
+	s.Used[factoidkey] = time.Now()
 	return
 }
 
@@ -103,10 +86,10 @@ func factoidUsedRecently(factoidkey string) (ret bool) {
 func getfactoidByKey(factoidkey string) (factoid, key string, ok bool) {
 	key = factoidkey
 restart:
-	if factoid, ok = factoids[key]; ok {
+	if factoid, ok = s.Factoids[key]; ok {
 		return
 	}
-	key, ok = aliases[key]
+	key, ok = s.Aliases[key]
 	if ok {
 		goto restart
 	}
@@ -165,7 +148,7 @@ func HandleAdmin(c *irc.IConn, m *irc.Message) (abort bool) {
 		state.Lock()
 		defer state.Unlock()
 
-		factoids[factoidkey] = factoid
+		s.Factoids[factoidkey] = factoid
 		savestate = true
 		c.Notice(m, "Added/Modified successfully")
 
@@ -174,16 +157,16 @@ func HandleAdmin(c *irc.IConn, m *irc.Message) (abort bool) {
 		defer state.Unlock()
 
 	restartdelete:
-		if _, ok := factoids[factoidkey]; ok {
-			delete(factoids, factoidkey)
+		if _, ok := s.Factoids[factoidkey]; ok {
+			delete(s.Factoids, factoidkey)
 			c.Notice(m, "Deleted successfully")
 			// clean up the aliases too
-			for k, v := range aliases {
+			for k, v := range s.Aliases {
 				if v == factoidkey {
-					delete(aliases, k)
+					delete(s.Aliases, k)
 				}
 			}
-		} else if factoidkey, ok = aliases[factoidkey]; ok {
+		} else if factoidkey, ok = s.Aliases[factoidkey]; ok {
 			c.Notice(m, "Found an alias, deleting the original factoid")
 			goto restartdelete
 		}
@@ -197,21 +180,21 @@ func HandleAdmin(c *irc.IConn, m *irc.Message) (abort bool) {
 		state.Lock()
 		defer state.Unlock()
 
-		if _, ok := factoids[newfactoidkey]; ok {
+		if _, ok := s.Factoids[newfactoidkey]; ok {
 			c.Notice(m, "Renaming would overwrite, please delete first")
 			return
 		}
-		if _, ok := aliases[newfactoidkey]; ok {
+		if _, ok := s.Aliases[newfactoidkey]; ok {
 			c.Notice(m, "Renaming would overwrite an alias, please delete first")
 			return
 		}
-		if _, ok := factoids[factoidkey]; ok {
-			factoids[newfactoidkey] = factoids[factoidkey]
-			delete(factoids, factoidkey)
+		if _, ok := s.Factoids[factoidkey]; ok {
+			s.Factoids[newfactoidkey] = s.Factoids[factoidkey]
+			delete(s.Factoids, factoidkey)
 			// rename the aliases too
-			for k, v := range aliases {
+			for k, v := range s.Aliases {
 				if v == factoidkey {
-					aliases[k] = newfactoidkey
+					s.Aliases[k] = newfactoidkey
 				}
 			}
 			savestate = true
@@ -235,7 +218,7 @@ func HandleAdmin(c *irc.IConn, m *irc.Message) (abort bool) {
 		// getfactoidByKey does
 		_, newfactoidkey, ok := getfactoidByKey(newfactoidkey)
 		if ok {
-			aliases[factoidkey] = newfactoidkey
+			s.Aliases[factoidkey] = newfactoidkey
 			savestate = true
 			c.Notice(m, "Added/Modified alias for ", newfactoidkey, " successfully")
 		} else {
@@ -246,9 +229,9 @@ func HandleAdmin(c *irc.IConn, m *irc.Message) (abort bool) {
 		state.Lock()
 		defer state.Unlock()
 
-		if _, ok := aliases[factoidkey]; ok {
+		if _, ok := s.Aliases[factoidkey]; ok {
 			c.Notice(m, "Deleted alias successfully")
-			delete(aliases, factoidkey)
+			delete(s.Aliases, factoidkey)
 			savestate = true
 		}
 

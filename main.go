@@ -21,6 +21,7 @@ package main
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/sztanpet/obscommits/internal/analyzer"
 	"github.com/sztanpet/obscommits/internal/config"
@@ -32,9 +33,8 @@ import (
 	"golang.org/x/net/context"
 )
 
-var debuggingenabled = true
-
 func main() {
+	time.Local = time.UTC
 	ctx := context.Background()
 	ctx = config.Init(ctx)
 	ctx = d.Init(ctx)

@@ -14,7 +14,17 @@ import (
 	"github.com/sztanpet/obscommits/internal/debug"
 )
 
-var tpl = &cache{}
+type factoid struct {
+	Name    string
+	Text    string
+	Aliases []string
+}
+
+type factoidSlice []factoid
+
+func (f factoidSlice) Len() int           { return len(f) }
+func (f factoidSlice) Less(i, j int) bool { return f[i].Name < f[j].Name }
+func (f factoidSlice) Swap(i, j int)      { f[i], f[j] = f[j], f[i] }
 
 type cache struct {
 	mu    sync.RWMutex
@@ -22,6 +32,8 @@ type cache struct {
 	cache []byte
 	valid bool
 }
+
+var tpl = &cache{}
 
 func (c *cache) init() {
 	c.mu.Lock()
@@ -99,7 +111,7 @@ func (c *cache) sortFactoids() []factoid {
 	defer state.Unlock()
 
 	a := make(map[string][]string)
-	for alias, factoid := range aliases {
+	for alias, factoid := range s.Aliases {
 		a[factoid] = append(a[factoid], alias)
 	}
 
@@ -107,8 +119,8 @@ func (c *cache) sortFactoids() []factoid {
 		sort.Strings(v)
 	}
 
-	fs := make([]factoid, 0, len(factoids))
-	for name, text := range factoids {
+	fs := make([]factoid, 0, len(s.Factoids))
+	for name, text := range s.Factoids {
 		fs = append(fs, factoid{
 			Name:    name,
 			Text:    text,
