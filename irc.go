@@ -58,6 +58,15 @@ func initIRC(ctx context.Context) context.Context {
 }
 
 func handleIRC(ctx context.Context, c *sirc.IConn, m *irc.Message) bool {
+	if m.Command == irc.RPL_WELCOME {
+		cfg := config.FromContext(ctx).IRC
+		for _, ch := range cfg.Channels {
+			c.Write(&irc.Message{Command: irc.JOIN, Params: []string{ch}})
+		}
+
+		return false
+	}
+
 	if m.Command != irc.PRIVMSG {
 		return false
 	}
