@@ -41,7 +41,6 @@ const tplStr = `
 {{define "wiki"}}[GH Wiki|{{.Author}}] {{.Page | unescape}} {{.Action}} {{.URL | unescape}}{{if ne .Action "created"}}/_compare/{{truncate .Sha 7 ""}}%5E...{{truncate .Sha 7 ""}}{{end}}{{end}}
 {{define "issues"}}[GH Issue|{{.Author}}] {{.Title | unescape}} {{.URL | unescape}}{{end}}
 {{define "rss"}}[Forum|{{.Author.Name}}] {{truncate .Title 150 "..." | unescape}} {{$l := index .Links 0}}{{$l.Href}}{{end}}
-{{define "githubevents"}}[GH] {{.Title | unescape}} {{$l := index .Links 0}}{{$l.Href}}{{end}}
 {{define "mantisissue"}}[M|{{$c := index .Categories 0}}{{$c.Text}}] {{.Title | unescape}} {{$l := index .Links 0}}{{$l.Href}}{{end}}
 `
 

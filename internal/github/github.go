@@ -25,53 +25,59 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/sorcix/irc"
 	"github.com/sztanpet/obscommits/internal/config"
 	"github.com/sztanpet/obscommits/internal/debug"
-	"github.com/sztanpet/obscommits/internal/irc"
 	"github.com/sztanpet/obscommits/internal/tpl"
+	"github.com/sztanpet/sirc"
 	"golang.org/x/net/context"
 )
 
 const maxLines = 5
 
-var (
-	srv  *irc.IConn
-	tmpl *tpl.Tpl
-	cfg  config.Github
-)
+type gh struct {
+	cfg config.Github
+	irc *sirc.IConn
+	tpl *tpl.Tpl
+}
 
 func Init(ctx context.Context) context.Context {
-	srv = irc.FromContext(ctx)
-	tmpl = tpl.FromContext(ctx)
-	cfg = config.FromContext(ctx).Github
+	cfg := config.FromContext(ctx).Github
+	gh := &gh{
+		cfg: cfg,
+		irc: sirc.FromContext(ctx),
+		tpl: tpl.FromContext(ctx),
+	}
 
-	http.HandleFunc(cfg.HookPath, func(w http.ResponseWriter, r *http.Request) {
-		switch r.Header.Get("X-Github-Event") {
-		case "push":
-			pushHandler(r)
-		case "gollum":
-			wikiHandler(r)
-		case "pull_request":
-			prHandler(r)
-		case "issues":
-			issueHandler(r)
-		}
-	})
-
+	http.HandleFunc(gh.cfg.HookPath, gh.handler)
 	return ctx
+}
+
+func (s *gh) handler(w http.ResponseWriter, r *http.Request) {
+	d.D("request", r)
+	switch r.Header.Get("X-Github-Event") {
+	case "push":
+		s.pushHandler(r)
+	case "gollum":
+		s.wikiHandler(r)
+	case "pull_request":
+		s.prHandler(r)
+	case "issues":
+		s.issueHandler(r)
+	}
 }
 
 func handlePayload(r *http.Request, data interface{}) error {
 	if r.Header.Get("Content-Type") == "application/json" {
 		dec := json.NewDecoder(r.Body)
 		return dec.Decode(&data)
-	} else {
-		payload := r.FormValue("payload")
-		return json.Unmarshal([]byte(payload), &data)
 	}
+
+	payload := r.FormValue("payload")
+	return json.Unmarshal([]byte(payload), &data)
 }
 
-func pushHandler(r *http.Request) {
+func (s *gh) pushHandler(r *http.Request) {
 	var data struct {
 		Ref     string
 		Before  string
@@ -81,7 +87,7 @@ func pushHandler(r *http.Request) {
 			}
 			URL     string
 			Message string
-			Id      string
+			ID      string
 		}
 		Repository struct {
 			Name string
@@ -97,7 +103,7 @@ func pushHandler(r *http.Request) {
 
 	pos := strings.LastIndex(data.Ref, "/") + 1
 	branch := data.Ref[pos:]
-	lines := make([]string, 0, 5)
+	lines := make([]string, 0, maxLines)
 	repo := data.Repository.Name
 	repoURL := data.Repository.URL
 	b := bytes.NewBuffer(nil)
@@ -120,35 +126,35 @@ func pushHandler(r *http.Request) {
 
 		b.Reset()
 		if needSkip && k == len(data.Commits)-2 {
-			tmpl.Execute(b, "pushSkipped", &struct {
+			s.tpl.Execute(b, "pushSkipped", &struct {
 				Author    string // commits[i].author.username
-				FromID    string // .before
+				FromID    string // commits[0].id
 				ToID      string // commits[len - 2].id
 				SkipCount int
 				Repo      string // repository.name
-				RepoURL   string // repository.URL
+				RepoURL   string // repository.url
 			}{
 				Author:    v.Author.Username,
 				FromID:    data.Before,
-				ToID:      v.Id,
+				ToID:      v.ID,
 				SkipCount: len(data.Commits) - 1,
 				Repo:      repo,
 				RepoURL:   repoURL,
 			})
 		} else if !needSkip || k > len(data.Commits)-2 {
-			tmpl.Execute(b, "push", &struct {
+			s.tpl.Execute(b, "push", &struct {
 				Author  string // commits[i].author.username
-				URL     string // commits[i].URL
+				URL     string // commits[i].url
 				Message string // commits[i].message
 				ID      string // commits[i].id
 				Repo    string // repository.name
-				RepoURL string // repository.URL
+				RepoURL string // repository.url
 				Branch  string // .ref the part after refs/heads/
 			}{
 				Author:  v.Author.Username,
 				URL:     v.URL,
 				Message: firstline,
-				ID:      v.Id,
+				ID:      v.ID,
 				Repo:    repo,
 				RepoURL: repoURL,
 				Branch:  branch,
@@ -160,19 +166,21 @@ func pushHandler(r *http.Request) {
 		}
 	}
 
-	go srv.WriteLines(cfg.AnnounceChan, lines, true)
+	for _, line := range lines {
+		s.writeLine(line)
+	}
 }
 
-func prHandler(r *http.Request) {
+func (s *gh) prHandler(r *http.Request) {
 	var data struct {
-		Action       string
-		Pull_request struct {
-			Html_URL string
-			Title    string
-			User     struct {
+		Action string
+		PR     struct {
+			URL   string `json:"html_url"`
+			Title string
+			User  struct {
 				Login string
 			}
-		}
+		} `json:"pull_request"`
 	}
 
 	err := handlePayload(r, &data)
@@ -186,26 +194,26 @@ func prHandler(r *http.Request) {
 	}
 
 	b := bytes.NewBuffer(nil)
-	tmpl.Execute(b, "pr", &struct {
+	s.tpl.Execute(b, "pr", &struct {
 		Author string
 		Title  string
 		URL    string
 	}{
-		Author: data.Pull_request.User.Login,
-		Title:  data.Pull_request.Title,
-		URL:    data.Pull_request.Html_URL,
+		Author: data.PR.User.Login,
+		Title:  data.PR.Title,
+		URL:    data.PR.URL,
 	})
 
-	go srv.WriteLines(cfg.AnnounceChan, []string{b.String()}, true)
+	s.writeLine(b.String())
 }
 
-func wikiHandler(r *http.Request) {
+func (s *gh) wikiHandler(r *http.Request) {
 	var data struct {
 		Pages []struct {
-			Page_name string
-			Action    string
-			Sha       string
-			Html_URL  string
+			Page   string `json:"page_name"`
+			Action string
+			Sha    string
+			URL    string `json:"html_url"`
 		}
 		Sender struct {
 			Login string
@@ -223,7 +231,7 @@ func wikiHandler(r *http.Request) {
 	for _, v := range data.Pages {
 
 		b.Reset()
-		tmpl.Execute(b, "wiki", &struct {
+		s.tpl.Execute(b, "wiki", &struct {
 			Author string
 			Page   string
 			URL    string
@@ -231,28 +239,30 @@ func wikiHandler(r *http.Request) {
 			Sha    string
 		}{
 			Author: data.Sender.Login,
-			Page:   v.Page_name,
-			URL:    v.Html_URL,
+			Page:   v.Page,
+			URL:    v.URL,
 			Action: v.Action,
 			Sha:    v.Sha,
 		})
 		lines = append(lines, b.String())
 	}
 
-	if l := len(lines); l > 5 {
-		lines = lines[l-5:]
+	if l := len(lines); l > maxLines {
+		lines = lines[l-maxLines:]
 	}
 
-	go srv.WriteLines(cfg.AnnounceChan, lines, true)
+	for _, line := range lines {
+		s.writeLine(line)
+	}
 }
 
-func issueHandler(r *http.Request) {
+func (s *gh) issueHandler(r *http.Request) {
 	var data struct {
 		Action string
 		Issue  struct {
-			Title    string
-			Html_URL string
-			User     struct {
+			Title string
+			URL   string `json:"html_url"`
+			User  struct {
 				Login string
 			}
 		}
@@ -269,15 +279,24 @@ func issueHandler(r *http.Request) {
 	}
 
 	b := bytes.NewBuffer(nil)
-	tmpl.Execute(b, "issues", &struct {
+	s.tpl.Execute(b, "issues", &struct {
 		Author string
 		Title  string
 		URL    string
 	}{
 		Author: data.Issue.User.Login,
 		Title:  data.Issue.Title,
-		URL:    data.Issue.Html_URL,
+		URL:    data.Issue.URL,
 	})
 
-	go srv.WriteLines(cfg.AnnounceChan, []string{b.String()}, true)
+	s.writeLine(b.String())
+}
+
+func (s *gh) writeLine(line string) {
+	m := &irc.Message{
+		Command:  irc.PRIVMSG,
+		Params:   []string{s.cfg.AnnounceChan},
+		Trailing: line,
+	}
+	s.irc.Write(m)
 }

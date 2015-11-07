@@ -31,11 +31,12 @@ import (
 	"time"
 
 	rss "github.com/jteeuwen/go-pkg-rss"
+	"github.com/sorcix/irc"
 	"github.com/sztanpet/obscommits/internal/config"
 	"github.com/sztanpet/obscommits/internal/debug"
-	"github.com/sztanpet/obscommits/internal/irc"
 	"github.com/sztanpet/obscommits/internal/persist"
 	"github.com/sztanpet/obscommits/internal/tpl"
+	"github.com/sztanpet/sirc"
 	"golang.org/x/net/context"
 )
 
@@ -45,11 +46,13 @@ var (
 	forumauthorre  = regexp.MustCompile(`^.+@.+ \((.+)\)$`)
 	seenLinks      = map[[16]byte]int64{}
 	state          *persist.State
-
-	tmpl *tpl.Tpl
-	srv  *irc.IConn
-	cfg  config.RSS
 )
+
+type rs struct {
+	cfg config.RSS
+	irc *sirc.IConn
+	tpl *tpl.Tpl
+}
 
 type sortableInt64 []int64
 
@@ -66,12 +69,14 @@ func Init(ctx context.Context) context.Context {
 
 	seenLinks = *state.Get().(*map[[16]byte]int64)
 
-	cfg = config.FromContext(ctx).RSS
-	srv = irc.FromContext(ctx)
-	tmpl = tpl.FromContext(ctx)
+	r := &rs{
+		cfg: config.FromContext(ctx).RSS,
+		irc: sirc.FromContext(ctx),
+		tpl: tpl.FromContext(ctx),
+	}
 
-	go pollRSS()
-	go pollMantis()
+	go r.pollRSS()
+	go r.pollMantis()
 
 	return ctx
 }
@@ -111,9 +116,9 @@ func seenGUID(id string) (ret bool) {
 	return
 }
 
-func pollMantis() {
+func (r *rs) pollMantis() {
 	// 5 second timeout
-	feed := rss.New(5, true, nil, mantisRSSHandler)
+	feed := rss.New(5, true, nil, r.mantisRSSHandler)
 	client := &http.Client{
 		Timeout: 5 * time.Second,
 	}
@@ -124,7 +129,7 @@ func pollMantis() {
 
 	for {
 
-		if err := feed.FetchClient(cfg.MantisURL, client, nil); err != nil {
+		if err := feed.FetchClient(r.cfg.MantisURL, client, nil); err != nil {
 			d.P("RSS fetch error:", err)
 			<-time.After(5 * time.Minute)
 			continue
@@ -134,13 +139,13 @@ func pollMantis() {
 	}
 }
 
-func pollRSS() {
+func (r *rs) pollRSS() {
 	// 5 second timeout
-	feed := rss.New(5, true, nil, itemHandler)
+	feed := rss.New(5, true, nil, r.itemHandler)
 	client := &http.Client{
 		Timeout: 5 * time.Second,
 	}
-	if len(cfg.ForumURL) > 8 && cfg.ForumURL[:8] == "https://" {
+	if len(r.cfg.ForumURL) > 8 && r.cfg.ForumURL[:8] == "https://" {
 		client.Transport = &http.Transport{
 			TLSClientConfig:       &tls.Config{},
 			ResponseHeaderTimeout: time.Second,
@@ -149,7 +154,7 @@ func pollRSS() {
 
 	for {
 
-		if err := feed.FetchClient(cfg.ForumURL, client, nil); err != nil {
+		if err := feed.FetchClient(r.cfg.ForumURL, client, nil); err != nil {
 			d.P("RSS fetch error:", err)
 			<-time.After(5 * time.Minute)
 			continue
@@ -198,7 +203,7 @@ func checkIfThreadHasSingleMessage(link string) bool {
 	return <-hassinglemessage
 }
 
-func itemHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
+func (r *rs) itemHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
 
 	if len(newitems) == 0 {
 		return
@@ -224,14 +229,14 @@ func itemHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
 		}
 
 		b.Reset()
-		tmpl.Execute(b, "rss", item)
+		r.tpl.Execute(b, "rss", item)
 		items = append(items, b.String())
 	}
 
-	go srv.WriteLines(cfg.ForumChan, items, false)
+	go r.writeLines(r.cfg.ForumChan, items)
 }
 
-func mantisRSSHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
+func (r *rs) mantisRSSHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
 
 	if len(newitems) == 0 {
 		return
@@ -251,9 +256,29 @@ func mantisRSSHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
 		}
 
 		b.Reset()
-		tmpl.Execute(b, "mantisissue", item)
+		r.tpl.Execute(b, "mantisissue", item)
 		items = append(items, b.String())
 	}
 
-	go srv.WriteLines(cfg.MantisChan, items, false)
+	go r.writeLines(r.cfg.MantisChan, items)
+}
+
+func (r *rs) writeLines(ch string, lines []string) {
+	l := len(lines)
+
+	if l == 0 {
+		return
+	}
+
+	if l > 5 {
+		lines = lines[:5]
+	}
+
+	for _, l := range lines {
+		r.irc.Write(&irc.Message{
+			Command:  irc.PRIVMSG,
+			Params:   []string{ch},
+			Trailing: l,
+		})
+	}
 }

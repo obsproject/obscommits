@@ -27,9 +27,10 @@ import (
 	"regexp"
 	"sync"
 
+	"github.com/sorcix/irc"
 	"github.com/sztanpet/obscommits/internal/config"
 	"github.com/sztanpet/obscommits/internal/debug"
-	"github.com/sztanpet/obscommits/internal/irc"
+	"github.com/sztanpet/sirc"
 	"golang.org/x/net/context"
 )
 
@@ -44,7 +45,7 @@ func Init(ctx context.Context) context.Context {
 	return ctx
 }
 
-func Handle(c *irc.IConn, m *irc.Message) (abort bool) {
+func Handle(c *sirc.IConn, m *irc.Message) (abort bool) {
 	if !loglinkre.MatchString(m.Trailing) {
 		return
 	}
@@ -82,8 +83,7 @@ func Handle(c *irc.IConn, m *irc.Message) (abort bool) {
 			}
 		}
 	end:
-		target := c.Target(m)
-		c.WriteLines(target, lines, false)
+		writeLines(c, m, lines)
 	}()
 
 	return true
@@ -116,4 +116,25 @@ func analyzePastebin(url, nick string, linechan chan string, wg *sync.WaitGroup)
 	line := fmt.Sprintf("%s: Analyzer results [%s Major| %s Minor] %s",
 		nick, majorcount, minorcount, url)
 	linechan <- line
+}
+
+func writeLines(c *sirc.IConn, m *irc.Message, lines []string) {
+	l := len(lines)
+	t := c.Target(m)
+
+	if l == 0 {
+		return
+	}
+
+	if l > 5 {
+		lines = lines[:5]
+	}
+
+	for _, l := range lines {
+		c.Write(&irc.Message{
+			Command:  irc.PRIVMSG,
+			Params:   []string{t},
+			Trailing: l,
+		})
+	}
 }

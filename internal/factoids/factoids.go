@@ -25,10 +25,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sorcix/irc"
 	"github.com/sztanpet/obscommits/internal/config"
 	"github.com/sztanpet/obscommits/internal/debug"
-	"github.com/sztanpet/obscommits/internal/irc"
 	"github.com/sztanpet/obscommits/internal/persist"
+	"github.com/sztanpet/sirc"
 	"golang.org/x/net/context"
 )
 
@@ -97,7 +98,7 @@ restart:
 	return
 }
 
-func Handle(c *irc.IConn, m *irc.Message) (abort bool) {
+func Handle(c *sirc.IConn, m *irc.Message) (abort bool) {
 	matches := handleRE.FindStringSubmatch(m.Trailing)
 	if len(matches) == 0 {
 		return
@@ -124,7 +125,7 @@ func Handle(c *irc.IConn, m *irc.Message) (abort bool) {
 	return
 }
 
-func HandleAdmin(c *irc.IConn, m *irc.Message) (abort bool) {
+func HandleAdmin(c *sirc.IConn, m *irc.Message) (abort bool) {
 	matches := adminRE.FindStringSubmatch(m.Trailing)
 	if len(matches) == 0 {
 		return

@@ -4,11 +4,13 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/sorcix/irc"
 	"github.com/sztanpet/obscommits/internal/analyzer"
+	"github.com/sztanpet/obscommits/internal/config"
 	"github.com/sztanpet/obscommits/internal/debug"
 	"github.com/sztanpet/obscommits/internal/factoids"
-	"github.com/sztanpet/obscommits/internal/irc"
 	"github.com/sztanpet/obscommits/internal/persist"
+	"github.com/sztanpet/sirc"
 	"golang.org/x/net/context"
 )
 
@@ -39,12 +41,23 @@ func initIRC(ctx context.Context) context.Context {
 	}
 
 	admins = *adminState.Get().(*map[string]struct{})
-	ctx = irc.Init(ctx, ircCallback)
 
-	return ctx
+	tcfg := config.FromContext(ctx)
+	sirc.DebuggingEnabled = tcfg.Debug.Debug
+	cfg := sirc.Config{
+		Addr:     tcfg.IRC.Addr,
+		Nick:     tcfg.IRC.Nick,
+		Password: tcfg.IRC.Password,
+		RealName: "http://obscommits.sztanpet.net/",
+	}
+	c := sirc.Init(cfg, func(c *sirc.IConn, m *irc.Message) bool {
+		return handleIRC(ctx, c, m)
+	})
+
+	return c.ToContext(ctx)
 }
 
-func ircCallback(c *irc.IConn, m *irc.Message) bool {
+func handleIRC(ctx context.Context, c *sirc.IConn, m *irc.Message) bool {
 	if m.Command != irc.PRIVMSG {
 		return false
 	}
@@ -75,7 +88,7 @@ func ircCallback(c *irc.IConn, m *irc.Message) bool {
 	return false
 }
 
-func handleAdmin(c *irc.IConn, m *irc.Message) bool {
+func handleAdmin(c *sirc.IConn, m *irc.Message) bool {
 	matches := adminRE.FindStringSubmatch(m.Trailing)
 	if len(matches) == 0 {
 		return false
