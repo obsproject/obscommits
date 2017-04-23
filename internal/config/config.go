@@ -53,6 +53,11 @@ type Github struct {
 	AnnounceChan string `toml:"announcechan"`
 }
 
+type Travis struct {
+	HookPath     string `toml:"hookpath"`
+	AnnounceChan string `toml:"announcechan"`
+}
+
 type IRC struct {
 	Addr     string   `toml:"addr"`
 	Ident    string   `toml:"ident"`
@@ -75,6 +80,7 @@ type AppConfig struct {
 	Factoids
 	Analyzer
 	Github
+	Travis
 	IRC `toml:"irc"`
 	RSS `toml:"rss"`
 }
@@ -95,6 +101,10 @@ hookpath="/"
 url="http://obsproject.com/analyzer?"
 
 [github]
+hookpath="somethingrandom"
+announcechan="#obs-dev"
+
+[travis]
 hookpath="somethingrandom"
 announcechan="#obs-dev"
 

@@ -30,6 +30,7 @@ import (
 	"github.com/sztanpet/obscommits/internal/github"
 	"github.com/sztanpet/obscommits/internal/rss"
 	"github.com/sztanpet/obscommits/internal/tpl"
+	"github.com/sztanpet/obscommits/internal/travis"
 	"golang.org/x/net/context"
 )
 
@@ -44,6 +45,7 @@ func main() {
 	ctx = factoids.Init(ctx)
 	ctx = rss.Init(ctx)
 	ctx = github.Init(ctx)
+	ctx = travis.Init(ctx)
 
 	cfg := config.FromContext(ctx).Website
 
