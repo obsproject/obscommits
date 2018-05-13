@@ -1,8 +1,16 @@
 package main
 
 import (
+	"archive/zip"
+	"encoding/base64"
+	"io"
+	"math/rand"
+	"net/http"
+	"os"
 	"regexp"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/sztanpet/obscommits/internal/analyzer"
 	"github.com/sztanpet/obscommits/internal/config"
@@ -17,15 +25,77 @@ import (
 var (
 	adminState *persist.State
 	admins     map[string]struct{}
-	adminRE    = regexp.MustCompile(`^\.(addadmin|deladmin|raw)\s+(.*)$`)
+	adminRE    = regexp.MustCompile(`^\.(addadmin|deladmin|raw|downloadstate)(?:\s+(.*))?$`)
+	zippathRE  = regexp.MustCompile(`^[A-Za-z0-9]+$`)
+	downloads  = stateDownload{
+		m: map[string]struct{}{},
+	}
 )
+
+type stateDownload struct {
+	mu sync.Mutex
+	m  map[string]struct{}
+}
+
+func (s *stateDownload) pathValid(path string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.m[path]; ok {
+		return true
+	}
+
+	return false
+}
+
+func (s *stateDownload) addPath(path string) {
+	s.mu.Lock()
+	s.m[path] = struct{}{}
+	s.mu.Unlock()
+}
+
+func (s *stateDownload) delPath(path string) {
+	s.mu.Lock()
+	delete(s.m, path)
+	s.mu.Unlock()
+}
 
 func initIRC(ctx context.Context) context.Context {
 	adminRE.Longest()
 
+	// handle state downloading
+	http.HandleFunc("/state/", func(w http.ResponseWriter, r *http.Request) {
+		if len(r.URL.Path) < len("/state/")+10 {
+			http.NotFound(w, r)
+			return
+		}
+		zippath := r.URL.Path[len("/state/"):]
+		if zippathRE.MatchString(zippath) == false || downloads.pathValid(zippath) == false {
+			http.NotFound(w, r)
+			return
+		}
+
+		f, err := os.Open(zippath)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+
+		// cleanup after
+		defer (func() {
+			f.Close()
+			downloads.delPath(zippath)
+			_ = os.Remove(zippath)
+		})()
+
+		w.Header().Add("Content-Disposition", "Attachment")
+		http.ServeContent(w, r, "obscommits-backup.zip", time.Now(), f)
+	})
+
 	var err error
 	adminState, err = persist.New("admins.state", &map[string]struct{}{
 		"melkor":                       struct{}{},
+		"melkor.lan":                   struct{}{},
 		"sztanpet.users.quakenet.org":  struct{}{},
 		"R1CH.users.quakenet.org":      struct{}{},
 		"Jim.users.quakenet.org":       struct{}{},
@@ -48,7 +118,7 @@ func initIRC(ctx context.Context) context.Context {
 		Addr:     tcfg.IRC.Addr,
 		Nick:     tcfg.IRC.Nick,
 		Password: tcfg.IRC.Password,
-		RealName: "http://obscommits.sztanpet.net/",
+		RealName: tcfg.Website.BaseURL,
 	}
 	c := sirc.Init(cfg, func(c *sirc.IConn, m *irc.Message) bool {
 		return handleIRC(ctx, c, m)
@@ -89,7 +159,7 @@ func handleIRC(ctx context.Context, c *sirc.IConn, m *irc.Message) bool {
 			return true
 		}
 
-		if handleAdmin(c, m) {
+		if handleAdmin(ctx, c, m) {
 			return true
 		}
 	}
@@ -97,8 +167,9 @@ func handleIRC(ctx context.Context, c *sirc.IConn, m *irc.Message) bool {
 	return false
 }
 
-func handleAdmin(c *sirc.IConn, m *irc.Message) bool {
+func handleAdmin(ctx context.Context, c *sirc.IConn, m *irc.Message) bool {
 	matches := adminRE.FindStringSubmatch(m.Trailing)
+	d.P(matches, m)
 	if len(matches) == 0 {
 		return false
 	}
@@ -122,7 +193,85 @@ func handleAdmin(c *sirc.IConn, m *irc.Message) bool {
 		} else {
 			go c.Write(nm)
 		}
+	case "downloadstate":
+		// generate random filename
+		r := rand.New(rand.NewSource(time.Now().UnixNano()))
+		u := make([]byte, 32)
+		_, _ = r.Read(u)
+
+		// just save it into the current working directory for now
+		zippath := strings.Map(func(r rune) rune {
+			if strings.IndexRune("+/=", r) < 0 {
+				return r
+			}
+			return -1
+		}, base64.StdEncoding.EncodeToString(u))
+
+		// currently the state is contained in these files
+		paths := []string{"admins.state", "factoids.state", "rss.state", "settings.cfg"}
+
+		err := generateZip(zippath, paths)
+		if err != nil {
+			c.Notice(m, "Error while generating zip: "+err.Error())
+			return true
+		}
+
+		downloads.addPath(zippath)
+		go (func() {
+			<-time.After(5 * time.Minute)
+			downloads.delPath(zippath)
+			_ = os.Remove(zippath)
+		})()
+
+		url := config.FromContext(ctx).Website.BaseURL + "/state/" + zippath
+		c.Notice(m, "Your one-time use URL (expiring in 5 minutes) is: "+url)
 	}
 
 	return true
+}
+
+// based on https://golangcode.com/create-zip-files-in-go/
+func generateZip(zippath string, paths []string) error {
+	zf, err := os.Create(zippath)
+	if err != nil {
+		return err
+	}
+
+	defer zf.Close()
+
+	zw := zip.NewWriter(zf)
+	defer zw.Close()
+
+	for _, path := range paths {
+		f, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+
+		defer f.Close()
+
+		i, err := f.Stat()
+		if err != nil {
+			return err
+		}
+
+		h, err := zip.FileInfoHeader(i)
+		if err != nil {
+			return err
+		}
+
+		h.Method = zip.Deflate
+		w, err := zw.CreateHeader(h)
+		if err != nil {
+			return err
+		}
+
+		// from the file into the zip
+		_, err = io.Copy(w, f)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

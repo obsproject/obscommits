@@ -74,11 +74,11 @@ func Init(ctx context.Context) context.Context {
 		tpl: tpl.FromContext(ctx),
 	}
 
-	if len(r.cfg.ForumChan) > 0 {
+	if len(r.cfg.ForumChan) > 0 && len(r.cfg.ForumURL) > 0 {
 		go r.pollRSS()
 	}
 
-	if len(r.cfg.MantisChan) > 0 {
+	if len(r.cfg.MantisChan) > 0 && len(r.cfg.MantisURL) > 0 {
 		go r.pollMantis()
 	}
 

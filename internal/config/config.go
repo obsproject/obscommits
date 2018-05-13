@@ -31,7 +31,8 @@ import (
 )
 
 type Website struct {
-	Addr string `toml:"addr"`
+	Addr    string `toml:"addr"`
+	BaseURL string `toml:"baseurl"`
 }
 
 type Analyzer struct {
@@ -89,6 +90,7 @@ var settingsFile *string
 
 const sampleconf = `[website]
 addr=":80"
+baseurl="http://obscommits.sztanpet.net"
 
 [debug]
 debug=false
@@ -117,7 +119,8 @@ password=""
 channels=["#obs-dev", "#obsproject"]
 
 [rss]
-forumurl="https://obsproject.com/forum/list/-/index.rss?order=post_date"
+# if url is empty, reporting is disabled
+forumurl=
 forumchan="#obsproject"
 mantisurl="https://obsproject.com/mantis/issues_rss.php?"
 mantischan="#obs-dev"

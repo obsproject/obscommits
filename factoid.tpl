@@ -86,7 +86,7 @@
         padding-left: 0;
       }
     </style>
-    
+
   </head>
   <body data-spy="scroll" data-target="#menu">
     <nav class="navbar navbar-inverse navbar-fixed-top" id="nav" role="navigation">
@@ -213,6 +213,15 @@
               <td class="command-arguments"><span class="nobr">&lt;irc-protocol&gt;</span></td>
               <td class="command-description">Send everything after the command as-is to the IRC server<br/>Example: &quot;.raw PRIVMSG #obsproject :needs the colons so that space-separated things are not seen as arguments&quot;</td>
             </tr>
+
+            <tr>
+              <th colspan="3">Download backup</th>
+            </tr>
+            <tr>
+              <td class="command-name">.downloadstate</td>
+              <td class="command-arguments"></td>
+              <td class="command-description">Generates a link that automatically disables itself after accessing it or after 5 minutes. The link downloads a zip file that contains the bot configuration including factoids, aliases, etc.</td>
+            </tr>
           </table>
         </div>
       </div>
@@ -220,7 +229,7 @@
 
     <footer role="contentinfo">
       <div class="container">
-        <p>Maintained by sztanpet with the help of <a href="https://github.com/sztanpet/obscommits/graphs/contributors">contributors</a>.</p>
+        <p>Maintained by the OBS Project with the help of <a href="https://github.com/obsproject/obscommits/graphs/contributors">contributors</a>.</p>
         <p>Code licensed under the MIT license.</p>
         <ul class="footer-links muted">
           <li><a href="https://github.com/sztanpet/obscommits">GitHub Repo</a></li>
