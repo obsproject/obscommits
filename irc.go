@@ -88,7 +88,7 @@ func initIRC(ctx context.Context) context.Context {
 			_ = os.Remove(zippath)
 		})()
 
-		w.Header().Add("Content-Disposition", "Attachment")
+		w.Header().Add("Content-Disposition", "attachment; filename=\"obscommits-backup.zip\"")
 		http.ServeContent(w, r, "obscommits-backup.zip", time.Now(), f)
 	})
 
