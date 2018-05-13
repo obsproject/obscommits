@@ -4,7 +4,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/sorcix/irc"
 	"github.com/sztanpet/obscommits/internal/analyzer"
 	"github.com/sztanpet/obscommits/internal/config"
 	"github.com/sztanpet/obscommits/internal/debug"
@@ -12,6 +11,7 @@ import (
 	"github.com/sztanpet/obscommits/internal/persist"
 	"github.com/sztanpet/sirc"
 	"golang.org/x/net/context"
+	"gopkg.in/sorcix/irc.v1"
 )
 
 var (

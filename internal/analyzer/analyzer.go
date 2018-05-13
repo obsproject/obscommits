@@ -27,11 +27,11 @@ import (
 	"regexp"
 	"sync"
 
-	"github.com/sorcix/irc"
 	"github.com/sztanpet/obscommits/internal/config"
 	"github.com/sztanpet/obscommits/internal/debug"
 	"github.com/sztanpet/sirc"
 	"golang.org/x/net/context"
+	"gopkg.in/sorcix/irc.v1"
 )
 
 var (

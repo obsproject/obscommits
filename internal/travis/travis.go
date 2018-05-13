@@ -25,12 +25,12 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/sorcix/irc"
 	"github.com/sztanpet/obscommits/internal/config"
 	"github.com/sztanpet/obscommits/internal/debug"
 	"github.com/sztanpet/obscommits/internal/tpl"
 	"github.com/sztanpet/sirc"
 	"golang.org/x/net/context"
+	"gopkg.in/sorcix/irc.v1"
 )
 
 type tr struct {
@@ -102,6 +102,13 @@ func (s *tr) handleType(r *http.Request, typ string) {
 		comitter = data.Email[:pos]
 	}
 
+	pos = strings.Index(data.Message, "\n")
+	message := data.Message
+	if pos != -1 {
+		message = data.Message[:pos]
+	}
+	message = strings.TrimSpace(message)
+
 	b := bytes.NewBuffer(nil)
 	s.tpl.Execute(b, "travis", &struct {
 		Comitter string
@@ -112,7 +119,7 @@ func (s *tr) handleType(r *http.Request, typ string) {
 		Branch   string
 	}{
 		Comitter: comitter,
-		Message:  data.Message,
+		Message:  message,
 		URL:      data.URL,
 		Status:   data.Status,
 		Repo:     data.Repository.Name,

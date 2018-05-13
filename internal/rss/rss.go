@@ -23,21 +23,20 @@ import (
 	"bytes"
 	"crypto/md5"
 	_ "crypto/sha512"
-	"crypto/tls"
 	"io/ioutil"
 	"net/http"
 	"regexp"
 	"sort"
 	"time"
 
-	rss "github.com/jteeuwen/go-pkg-rss"
-	"github.com/sorcix/irc"
+	"github.com/mmcdole/gofeed"
 	"github.com/sztanpet/obscommits/internal/config"
 	"github.com/sztanpet/obscommits/internal/debug"
 	"github.com/sztanpet/obscommits/internal/persist"
 	"github.com/sztanpet/obscommits/internal/tpl"
 	"github.com/sztanpet/sirc"
 	"golang.org/x/net/context"
+	"gopkg.in/sorcix/irc.v1"
 )
 
 var (
@@ -75,8 +74,13 @@ func Init(ctx context.Context) context.Context {
 		tpl: tpl.FromContext(ctx),
 	}
 
-	go r.pollRSS()
-	go r.pollMantis()
+	if len(r.cfg.ForumChan) > 0 {
+		go r.pollRSS()
+	}
+
+	if len(r.cfg.MantisChan) > 0 {
+		go r.pollMantis()
+	}
 
 	return ctx
 }
@@ -117,50 +121,34 @@ func seenGUID(id string) (ret bool) {
 }
 
 func (r *rs) pollMantis() {
-	// 5 second timeout
-	feed := rss.New(5, true, nil, r.mantisRSSHandler)
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-	}
-	client.Transport = &http.Transport{
-		TLSClientConfig:       &tls.Config{},
-		ResponseHeaderTimeout: time.Second,
-	}
+	fp := gofeed.NewParser()
 
 	for {
-
-		if err := feed.FetchClient(r.cfg.MantisURL, client, nil); err != nil {
+		feed, err := fp.ParseURL(r.cfg.MantisURL)
+		if err != nil {
 			d.P("RSS fetch error:", err)
 			<-time.After(5 * time.Minute)
 			continue
 		}
 
-		<-time.After(time.Duration(feed.SecondsTillUpdate() * int64(time.Second)))
+		r.mantisRSSHandler(feed)
+		<-time.After(5 * time.Minute)
 	}
 }
 
 func (r *rs) pollRSS() {
-	// 5 second timeout
-	feed := rss.New(5, true, nil, r.itemHandler)
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-	}
-	if len(r.cfg.ForumURL) > 8 && r.cfg.ForumURL[:8] == "https://" {
-		client.Transport = &http.Transport{
-			TLSClientConfig:       &tls.Config{},
-			ResponseHeaderTimeout: time.Second,
-		}
-	}
+	fp := gofeed.NewParser()
 
 	for {
-
-		if err := feed.FetchClient(r.cfg.ForumURL, client, nil); err != nil {
+		feed, err := fp.ParseURL(r.cfg.ForumURL)
+		if err != nil {
 			d.P("RSS fetch error:", err)
 			<-time.After(5 * time.Minute)
 			continue
 		}
 
-		<-time.After(time.Duration(feed.SecondsTillUpdate() * int64(time.Second)))
+		r.itemHandler(feed)
+		<-time.After(5 * time.Minute)
 	}
 }
 
@@ -203,23 +191,23 @@ func checkIfThreadHasSingleMessage(link string) bool {
 	return <-hassinglemessage
 }
 
-func (r *rs) itemHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
+func (r *rs) itemHandler(feed *gofeed.Feed) {
 
-	if len(newitems) == 0 {
+	if len(feed.Items) == 0 {
 		return
 	}
 
 	var items []string
 	b := bytes.NewBuffer(nil)
 
-	for _, item := range newitems {
-		if seenGUID(*item.Guid) {
+	for _, item := range feed.Items {
+		if seenGUID(item.GUID) {
 			continue
 		}
 
 		// we check after marking the thread as seen because regardless of the fact
 		// that the check fails, we do not want to check it again
-		if !checkIfThreadHasSingleMessage(*item.Guid) {
+		if !checkIfThreadHasSingleMessage(item.GUID) {
 			continue
 		}
 
@@ -236,17 +224,17 @@ func (r *rs) itemHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) 
 	go r.writeLines(r.cfg.ForumChan, items)
 }
 
-func (r *rs) mantisRSSHandler(feed *rss.Feed, ch *rss.Channel, newitems []*rss.Item) {
+func (r *rs) mantisRSSHandler(feed *gofeed.Feed) {
 
-	if len(newitems) == 0 {
+	if len(feed.Items) == 0 {
 		return
 	}
 
 	var items []string
 	b := bytes.NewBuffer(nil)
 
-	for _, item := range newitems {
-		if seenGUID(*item.Guid) {
+	for _, item := range feed.Items {
+		if seenGUID(item.GUID) {
 			continue
 		}
 

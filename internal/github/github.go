@@ -25,12 +25,12 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/sorcix/irc"
 	"github.com/sztanpet/obscommits/internal/config"
 	"github.com/sztanpet/obscommits/internal/debug"
 	"github.com/sztanpet/obscommits/internal/tpl"
 	"github.com/sztanpet/sirc"
 	"golang.org/x/net/context"
+	"gopkg.in/sorcix/irc.v1"
 )
 
 const maxLines = 5
