@@ -44,7 +44,7 @@ func (c *cache) init() {
 			// find urls, replace them with placeholders
 			seed := rand.Int()
 			placeholder := fmt.Sprintf("|%d-%%d-%d|", seed, seed)
-			matches := xurls.Strict().FindAllString(s, -1)
+			matches := xurls.Strict.FindAllString(s, -1)
 			for ix, url := range matches {
 				matches[ix] = template.HTMLEscapeString(url)
 				s = strings.Replace(s, url, fmt.Sprintf(placeholder, ix), -1)

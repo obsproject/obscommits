@@ -26,8 +26,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/naoina/toml"
-
+	"github.com/pelletier/go-toml"
 	"golang.org/x/net/context"
 )
 
