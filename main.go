@@ -23,14 +23,14 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/sztanpet/obscommits/internal/analyzer"
-	"github.com/sztanpet/obscommits/internal/config"
-	"github.com/sztanpet/obscommits/internal/debug"
-	"github.com/sztanpet/obscommits/internal/factoids"
-	"github.com/sztanpet/obscommits/internal/github"
-	"github.com/sztanpet/obscommits/internal/rss"
-	"github.com/sztanpet/obscommits/internal/tpl"
-	"github.com/sztanpet/obscommits/internal/travis"
+	"github.com/obsproject/obscommits/internal/analyzer"
+	"github.com/obsproject/obscommits/internal/config"
+	"github.com/obsproject/obscommits/internal/debug"
+	"github.com/obsproject/obscommits/internal/factoids"
+	"github.com/obsproject/obscommits/internal/github"
+	"github.com/obsproject/obscommits/internal/rss"
+	"github.com/obsproject/obscommits/internal/tpl"
+	"github.com/obsproject/obscommits/internal/travis"
 	"golang.org/x/net/context"
 )
 

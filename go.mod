@@ -1,4 +1,4 @@
-module github.com/sztanpet/obscommits
+module github.com/obsproject/obscommits
 
 require (
 	github.com/BurntSushi/toml v0.3.0

@@ -33,7 +33,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sztanpet/obscommits/internal/config"
+	"github.com/obsproject/obscommits/internal/config"
 	"golang.org/x/net/context"
 )
 

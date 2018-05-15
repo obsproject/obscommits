@@ -232,7 +232,7 @@
         <p>Maintained by the OBS Project with the help of <a href="https://github.com/obsproject/obscommits/graphs/contributors">contributors</a>.</p>
         <p>Code licensed under the MIT license.</p>
         <ul class="footer-links muted">
-          <li><a href="https://github.com/sztanpet/obscommits">GitHub Repo</a></li>
+          <li><a href="https://github.com/obsproject/obscommits">GitHub Repo</a></li>
           <li>&middot;</li>
           <li><a href="https://obsproject.com">Open Broadcaster Software</a></li>
           <li>&middot;</li>

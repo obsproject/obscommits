@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/sztanpet/obscommits/internal/debug"
+	"github.com/obsproject/obscommits/internal/debug"
 	"mvdan.cc/xurls"
 )
 
