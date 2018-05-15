@@ -1,0 +1,3 @@
+refactor bot to stop using contexts as dependency injection containers
+use https://github.com/thoj/go-ircevent
+make the output pluggable https://medium.com/learning-the-go-programming-language/writing-modular-go-programs-with-plugins-ec46381ee1a9
